@@ -1,5 +1,3 @@
-You're absolutely right. Let me correct that section:
-
 # Nifty - Matrix Chatbot with Internet Search
 
 A feature-rich Matrix chatbot powered by DeepSeek AI with internet search capabilities for augmented responses. Nifty can fetch real-time information from the web, analyze URLs, and provide context-aware responses in Matrix chat rooms.
