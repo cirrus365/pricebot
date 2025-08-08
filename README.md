@@ -1,176 +1,155 @@
-Nifty Matrix chatbot - Readme
+You're absolutely right. Let me correct that section:
 
-Overview
-- Nifty is a Matrix-based chatbot designed to operate within Matrix homeservers (example: matrix.org). It responds to conversations, manages context, analyzes topics, and fetches information from external sources when needed.
-- A defined personality can be set using the system prompt. Adjusting the system prompt changes tone, style, and approach while keeping core capabilities intact.
-- This readme describes features, usage, and how to run the software from the terminal, as well as how to set up a systemd service to run it automatically.
+# Nifty - Matrix Chatbot with Internet Search
 
-Key Features
-- Personality defined by a system prompt: tailorable tone and behavior via a central system prompt string.
-- Context-aware responses: tracks room-level context, topics, user interests, and important messages to produce informed replies.
-- Message handling and interaction: detects engagement triggers, can respond to direct mentions or replies, and can react with emojis to certain prompts.
-- Code formatting and content handling: formats code blocks properly for display, detects and processes code content.
-- URL handling: can read and discuss content from URLs shared in conversations; supports content summarization and analysis.
-- Web search integration: uses a web-search layer to fetch current information when appropriate, with smart detection about when to search.
-- Technical support emphasis: capable of providing technical guidance with code examples and best practices when relevant.
-- Conversation summarization: can generate comprehensive summaries of recent activity, with notes on topics, participants, and important messages.
-- Localizable and extensible: designed to be extended with additional triggers, topics, or integrations as needed.
+A feature-rich Matrix chatbot powered by DeepSeek AI with internet search capabilities for augmented responses. Nifty can fetch real-time information from the web, analyze URLs, and provide context-aware responses in Matrix chat rooms.
 
-Usage and Commands
-- Engage by mentioning a trigger phrase in a message (default: a specific trigger word in the configuration). You can also reply directly to a prior message to continue the conversation.
-- Common commands:
-  - nifty !reset — Clear the current contextual history for the active room.
-  - nifty summary — Get a detailed analysis of recent activity in the room.
-  - Share URLs — Any shared URL can be read and analyzed by the chatbot.
-- Output handling:
-  - The chatbot formats code blocks nicely for display.
-  - When content is fetched from the web or shared URLs, the assistant provides summaries and actionable insights.
+## Features
 
-System Prompt and Personality
-- The personality is defined by a system prompt embedded in the code. To modify how it behaves, edit the BOT_PERSONALITY string in the file nifty.py.
-- The personality is designed to be helpful, concise, and context-aware, while keeping interactions focused on user needs and available data.
-- You can customize tone, style, and preferences via the system prompt to suit a particular environment or audience.
-- Important: The exact content of the system prompt is not shown here. Edit nifty.py to adjust the personality.
+- **🤖 AI-Powered Conversations** - Uses DeepSeek AI for intelligent, context-aware responses
+- **🔍 Internet Search Integration** - Automatically searches the web for current information using Jina.ai
+- **🔗 URL Content Analysis** - Reads and analyzes content from shared URLs
+- **💬 Context-Aware Responses** - Tracks conversation history and adapts responses accordingly
+- **📊 Chat Analytics** - Provides comprehensive chat summaries and activity analysis
+- **💻 Code Formatting** - Proper syntax highlighting for multiple programming languages
+- **😎 Emoji Reactions** - Automatically reacts to messages with appropriate emojis
+- **🧹 Context Management** - Reset conversation context with simple commands
+- **🔒 Privacy-Focused** - Designed with privacy and open-source values in mind
+- **👥 Multi-Room Support** - Works across multiple Matrix rooms simultaneously
+- **🎯 Smart Topic Detection** - Tracks conversation topics and user expertise
 
-Getting Started (Prerequisites)
-- A Python 3.x environment.
-- Access to a Matrix homeserver (example: matrix.org) and a user account.
-- Dependencies installed (as described in installation steps below).
-- If you plan to enable web search and external content processing, you may need API keys for:
-  - OpenRouter (for large language model interactions)
-  - Jina (for web search and content extraction)
-  - Optional: any other external services you enable via configuration
+## Requirements
 
-Files and Example Configuration
-- The main script is named nifty.py. Save or rename the script exactly as nifty.py to follow the example.
-- Example Home server and account (for illustration):
-  - HOMESERVER: https://matrix.org
-  - USERNAME: @nifty:matrix.org
-  - PASSWORD: your-password-here
-- Important: For security and best practices, avoid embedding credentials directly in the code in production. Consider loading credentials from environment variables or a secure vault, and reference them from the script.
+- Python 3.8 or higher
+- Matrix account
+- OpenRouter API key (for DeepSeek AI)
+- Jina.ai API key (for web search)
 
-Launching from the Terminal
-- Create and activate a Python environment (optional but recommended):
-  - python3 -m venv venv
-  - source venv/bin/activate
-- Install dependencies (adjust as needed for your environment):
-  - pip install aiohttp matrix-nio
-  - (If you have a requirements.txt from the project, use: pip install -r requirements.txt)
-- Run the program:
-  - python3 nifty.py
-- While running, the assistant will log in to the specified Matrix homeserver and begin listening for conversations in joined rooms.
+## Installation
 
-Running as a Systemd Service (auto-start on boot)
-- Create a dedicated user (optional but recommended):
-  - sudo useradd -r -m nifty
-- Create a working directory for the app and place nifty.py there.
-- Create a Python virtual environment (optional):
-  - python3 -m venv /path/to/nifty/venv
-  - /path/to/nifty/venv/bin/python -m pip install -r requirements.txt
-- Create a systemd service file, for example /etc/systemd/system/nifty.service:
-  - (copy/paste the block below)
-  ```
-  [Unit]
-  Description=Nifty Matrix Assistant Service
-  After=network-online.target
+Install the required Python dependencies:
 
-  [Service]
-  Type=simple
-  User=nifty
-  WorkingDirectory=/path/to/nifty
-  ExecStart=/path/to/nifty/venv/bin/python /path/to/nifty/nifty.py
-  Restart=on-failure
-  RestartSec=5s
-  Environment="HOMESERVER=https://matrix.org"
-  Environment="USERNAME=@nifty:matrix.org"
-  Environment="PASSWORD=your-password-here"
-  Environment="OPENROUTER_API_KEY=your-openrouter-key"
-  Environment="JINA_API_KEY=your-jina-key"
-  Environment="LOG_LEVEL=INFO"
+```bash
+pip install asyncio aiohttp matrix-nio
+```
 
-  [Install]
-  WantedBy=multi-user.target
-  ```
-- Enable and start the service:
-  - sudo systemctl daemon-reload
-  - sudo systemctl enable nifty
-  - sudo systemctl start nifty
-  - sudo systemctl status nifty
-- Logs can be viewed with:
-  - sudo journalctl -u nifty -f
+## Configuration
 
-Code blocks for copy-paste
-- Launching from terminal (commands)
-  - Create and activate virtualenv:
-  ```
-  python3 -m venv venv
-  source venv/bin/activate
-  ```
-  - Install dependencies:
-  ```
-  pip install aiohttp matrix-nio
-  ```
-  - Run the program:
-  ```
-  python3 nifty.py
-  ```
-- Systemd service file (copy-paste into /etc/systemd/system/nifty.service)
-  ```
-  [Unit]
-  Description=Nifty Matrix Assistant Service
-  After=network-online.target
+Edit the following variables in the script:
 
-  [Service]
-  Type=simple
-  User=nifty
-  WorkingDirectory=/path/to/nifty
-  ExecStart=/path/to/nifty/venv/bin/python /path/to/nifty/nifty.py
-  Restart=on-failure
-  RestartSec=5s
-  Environment="HOMESERVER=https://matrix.org"
-  Environment="USERNAME=@nifty:matrix.org"
-  Environment="PASSWORD=your-password-here"
-  Environment="OPENROUTER_API_KEY=your-openrouter-key"
-  Environment="JINA_API_KEY=your-jina-key"
-  Environment="LOG_LEVEL=INFO"
+- `HOMESERVER` - Your Matrix homeserver URL (e.g., "https://matrix.org")
+- `USERNAME` - Your bot's Matrix username (e.g., "@botname:matrix.org")
+- `PASSWORD` - Your bot's password
+- `OPENROUTER_API_KEY` - Your OpenRouter API key
+- `JINA_API_KEY` - Your Jina.ai API key for web search
 
-  [Install]
-  WantedBy=multi-user.target
-  ```
-- Minimal Configuration Snippet (conceptual)
-  ```
-  # Minimal configuration (conceptual)
-  HOMESERVER = "https://matrix.org"
-  USERNAME = "@nifty:matrix.org"
-  PASSWORD = "your-password-here"
-  ```
-Notes on Security and Best Practices
-- Do not store plaintext passwords or API keys in production code. Use environment variables or a secure vault.
-- When using systemd, consider running under a dedicated, minimally-permissive user account.
-- Regularly rotate credentials and monitor access to the Matrix account used by the script.
-- Keep dependencies up to date and test updates in a staging environment before deployment.
+## Running the Bot
 
-Customization Tips
-- System Prompt: The overall tone and behavior are driven by the system prompt. Edit BOT_PERSONALITY in nifty.py to adjust personality, style, and constraints.
-- Context Sensitivity: The assistant tracks topics, user interests, and important messages to tailor responses. You can adjust lookback windows and topic definitions if you want finer control.
-- Web and Data Sources: OpenRouter and Jina are used for advanced capabilities like web search and content extraction. Update API keys in a secure manner and adjust usage as needed.
+### From Terminal
 
-Example: Minimal Configuration Snippet (conceptual)
-- In the actual file nifty.py, set the core fields:
-  - HOMESERVER = "https://matrix.org"
-  - USERNAME = "@nifty:matrix.org"
-  - PASSWORD = "your-password-here"
-- Then customize BOT_PERSONALITY as desired, and save.
+```bash
+python nifty_bot.py
+```
 
-What to Expect
-- Upon startup, the system will connect to the specified Matrix homeserver, join existing rooms, and listen for messages.
-- Interactions are driven by explicit triggers and replies, with automatic context management to improve relevance over time.
-- Code formatting, URL reading, and knowledge retrieval from external sources are designed to augment helpful, concise responses.
+### Using systemd Service
 
-Troubleshooting
-- If the service fails to start, check:
-  - Credentials and server URL correctness.
-  - Network access to the Matrix server.
-  - Availability and validity of external API keys (OpenRouter, Jina).
-  - Python dependencies and compatibility with the installed Python version.
-- Review log output for error messages and adjust configuration accordingly.
+Create a systemd service file to run the chatbot as a system service:
+
+```bash
+sudo nano /etc/systemd/system/nifty-bot.service
+```
+
+Add the following content:
+
+```ini
+[Unit]
+Description=Nifty Matrix Chatbot
+After=network.target
+
+[Service]
+Type=simple
+User=your-username
+WorkingDirectory=/path/to/bot/directory
+Environment="PATH=/usr/bin:/usr/local/bin"
+ExecStart=/usr/bin/python3 /path/to/bot/directory/nifty_bot.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start the service:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable nifty-bot.service
+sudo systemctl start nifty-bot.service
+```
+
+Check service status:
+
+```bash
+sudo systemctl status nifty-bot.service
+```
+
+View logs:
+
+```bash
+sudo journalctl -u nifty-bot.service -f
+```
+
+## Usage
+
+### Triggering the Bot
+
+- **Direct mention**: Include "nifty" anywhere in your message
+- **Reply**: Reply to any of Nifty's messages
+- **Commands**:
+  - `nifty !reset` - Clear conversation context
+  - `nifty summary` - Get a comprehensive chat analysis
+  - `nifty [your question]` - Ask anything!
+
+### Features in Action
+
+- **Web Search**: Ask about current events, news, or real-time information
+- **URL Analysis**: Share URLs and Nifty will read and analyze the content
+- **Code Help**: Get programming assistance with syntax-highlighted code
+- **Chat Summary**: Request summaries of recent conversations
+
+## Dependencies
+
+- `asyncio` - Asynchronous programming support
+- `aiohttp` - Async HTTP client/server
+- `matrix-nio` - Matrix client library
+- `datetime` - Date and time handling
+- `json` - JSON data handling
+- `html` - HTML escaping utilities
+- `re` - Regular expressions
+- `urllib.parse` - URL parsing
+- `collections` - Specialized container datatypes
+- `random` - Random number generation
+
+## API Services
+
+- **OpenRouter**: Provides access to DeepSeek AI model for conversation
+- **Jina.ai**: Powers web search and URL content extraction capabilities
+
+## Privacy & Security
+
+Nifty is designed with privacy in mind:
+- Works in standard Matrix rooms (unencrypted)
+- For E2EE support, additional setup with matrix-nio encryption dependencies is required
+- Doesn't log personal data beyond conversation context
+- Open-source and self-hostable
+- Respects user privacy preferences
+
+**Note**: This bot currently does not support end-to-end encrypted rooms out of the box. To enable E2EE support, you would need to install additional dependencies and configure the matrix-nio E2EE plugin.
+
+## Contributing
+
+Feel free to submit issues, fork the repository, and create pull requests for any improvements.
+
+## License
+
+This project is open-source. Please check the repository for license details.
