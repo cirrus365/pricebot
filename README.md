@@ -1,7 +1,7 @@
 Nifty Matrix chatbot - Readme
 
 Overview
-- Nifty is a Matrix-based chatbot designed to operate within Matrix homeservers (example: matrix.org). It is configured to respond to conversations, manage context, analyze topics, and fetch information from external sources when needed.
+- Nifty is a Matrix-based chatbot designed to operate within Matrix homeservers (example: matrix.org). It responds to conversations, manages context, analyzes topics, and fetches information from external sources when needed.
 - A defined personality can be set using the system prompt. Adjusting the system prompt changes tone, style, and approach while keeping core capabilities intact.
 - This readme describes features, usage, and how to run the software from the terminal, as well as how to set up a systemd service to run it automatically.
 
@@ -17,7 +17,7 @@ Key Features
 - Localizable and extensible: designed to be extended with additional triggers, topics, or integrations as needed.
 
 Usage and Commands
-- Engage by mentioning a trigger phrase in a message (default: a specific trigger word in the configuration). You can also reply directly to a prior message from the assistant to continue the conversation.
+- Engage by mentioning a trigger phrase in a message (default: a specific trigger word in the configuration). You can also reply directly to a prior message to continue the conversation.
 - Common commands:
   - nifty !reset — Clear the current contextual history for the active room.
   - nifty summary — Get a detailed analysis of recent activity in the room.
@@ -30,6 +30,7 @@ System Prompt and Personality
 - The personality is defined by a system prompt embedded in the code. To modify how it behaves, edit the BOT_PERSONALITY string in the file nifty.py.
 - The personality is designed to be helpful, concise, and context-aware, while keeping interactions focused on user needs and available data.
 - You can customize tone, style, and preferences via the system prompt to suit a particular environment or audience.
+- Important: The exact content of the system prompt is not shown here. Edit nifty.py to adjust the personality.
 
 Getting Started (Prerequisites)
 - A Python 3.x environment.
@@ -67,27 +68,29 @@ Running as a Systemd Service (auto-start on boot)
   - python3 -m venv /path/to/nifty/venv
   - /path/to/nifty/venv/bin/python -m pip install -r requirements.txt
 - Create a systemd service file, for example /etc/systemd/system/nifty.service:
-  - [Unit]
-    Description=Nifty Matrix Assistant Service
-    After=network-online.target
+  - (copy/paste the block below)
+  ```
+  [Unit]
+  Description=Nifty Matrix Assistant Service
+  After=network-online.target
 
-  - [Service]
-    Type=simple
-    User=nifty
-    WorkingDirectory=/path/to/nifty
-    ExecStart=/path/to/nifty/venv/bin/python /path/to/nifty/nifty.py
-    Restart=on-failure
-    RestartSec=5s
-    Environment="HOMESERVER=https://matrix.org"
-    Environment="USERNAME=@nifty:matrix.org"
-    Environment="PASSWORD=your-password-here"
-    Environment="OPENROUTER_API_KEY=your-openrouter-key"
-    Environment="JINA_API_KEY=your-jina-key"
-    Environment="LOG_LEVEL=INFO"
+  [Service]
+  Type=simple
+  User=nifty
+  WorkingDirectory=/path/to/nifty
+  ExecStart=/path/to/nifty/venv/bin/python /path/to/nifty/nifty.py
+  Restart=on-failure
+  RestartSec=5s
+  Environment="HOMESERVER=https://matrix.org"
+  Environment="USERNAME=@nifty:matrix.org"
+  Environment="PASSWORD=your-password-here"
+  Environment="OPENROUTER_API_KEY=your-openrouter-key"
+  Environment="JINA_API_KEY=your-jina-key"
+  Environment="LOG_LEVEL=INFO"
 
-  - [Install]
-    WantedBy=multi-user.target
-
+  [Install]
+  WantedBy=multi-user.target
+  ```
 - Enable and start the service:
   - sudo systemctl daemon-reload
   - sudo systemctl enable nifty
@@ -96,6 +99,51 @@ Running as a Systemd Service (auto-start on boot)
 - Logs can be viewed with:
   - sudo journalctl -u nifty -f
 
+Code blocks for copy-paste
+- Launching from terminal (commands)
+  - Create and activate virtualenv:
+  ```
+  python3 -m venv venv
+  source venv/bin/activate
+  ```
+  - Install dependencies:
+  ```
+  pip install aiohttp matrix-nio
+  ```
+  - Run the program:
+  ```
+  python3 nifty.py
+  ```
+- Systemd service file (copy-paste into /etc/systemd/system/nifty.service)
+  ```
+  [Unit]
+  Description=Nifty Matrix Assistant Service
+  After=network-online.target
+
+  [Service]
+  Type=simple
+  User=nifty
+  WorkingDirectory=/path/to/nifty
+  ExecStart=/path/to/nifty/venv/bin/python /path/to/nifty/nifty.py
+  Restart=on-failure
+  RestartSec=5s
+  Environment="HOMESERVER=https://matrix.org"
+  Environment="USERNAME=@nifty:matrix.org"
+  Environment="PASSWORD=your-password-here"
+  Environment="OPENROUTER_API_KEY=your-openrouter-key"
+  Environment="JINA_API_KEY=your-jina-key"
+  Environment="LOG_LEVEL=INFO"
+
+  [Install]
+  WantedBy=multi-user.target
+  ```
+- Minimal Configuration Snippet (conceptual)
+  ```
+  # Minimal configuration (conceptual)
+  HOMESERVER = "https://matrix.org"
+  USERNAME = "@nifty:matrix.org"
+  PASSWORD = "your-password-here"
+  ```
 Notes on Security and Best Practices
 - Do not store plaintext passwords or API keys in production code. Use environment variables or a secure vault.
 - When using systemd, consider running under a dedicated, minimally-permissive user account.
