@@ -126,8 +126,3 @@ Troubleshooting
   - Availability and validity of external API keys (OpenRouter, Jina).
   - Python dependencies and compatibility with the installed Python version.
 - Review log output for error messages and adjust configuration accordingly.
-
-License and Attribution
-- This readme describes how to use and deploy the provided code. Respect the license terms of any third-party libraries or services used by the project when deploying or modifying.
-
-If you want additional sections or want the readme tailored to a specific audience or deployment scenario (e.g., educational use, enterprise deployment, or more detailed security steps), let me know and I can update accordingly.
