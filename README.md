@@ -21,9 +21,9 @@ Usage and Commands
 - Common commands:
   - nifty !reset — Clear the current contextual history for the active room.
   - nifty summary — Get a detailed analysis of recent activity in the room.
-  - Share URLs — Any shared URL can be read and analyzed by the assistant.
+  - Share URLs — Any shared URL can be read and analyzed by the chatbot.
 - Output handling:
-  - The assistant formats code blocks nicely for display.
+  - The chatbot formats code blocks nicely for display.
   - When content is fetched from the web or shared URLs, the assistant provides summaries and actionable insights.
 
 System Prompt and Personality
