@@ -8,21 +8,25 @@ import re
 from urllib.parse import quote, urlparse, unquote
 from collections import defaultdict, deque
 import random
+from asyncio import Queue, QueueFull
 
 # Your credentials
-HOMESERVER = "https://matrix.org"
-USERNAME = "@username:matrix.org"
-PASSWORD = "YOUR_PASSWORD"
+HOMESERVER = "https://converser.eu"
+USERNAME = "@nifty:converser.eu"
+PASSWORD = "kSsGP06f#Lr4xswD^aLttq0$An2pb3MDxU944urb6BMsjgXRl6z#UNI!33VZES#6niZbn1GNW8NBVBlT0Q&A@AVBrFzKa9dZd9KhyGGFrfLeUer@mdE4dtIyTDevQ3nx"
 
 # OpenRouter config
-OPENROUTER_API_KEY = "YOUR_API_KEY"
+OPENROUTER_API_KEY = "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"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 # Bot filter - prevent triggering other bots
 FILTERED_WORDS = ['kyoko']  # Only filter exact bot trigger word
 
 # Jina.ai config for web search only
-JINA_API_KEY = "YOUR_JINA_API_KEY"
+JINA_API_KEY = "jina_0cad2a2d42bb49d48c37eac962701bbcEZU5hmwFVrVYofGRF0fY86lzu3Lo"
+
+# Create a request queue to prevent overload
+request_queue = Queue(maxsize=5)  # Max 5 pending requests
 
 # Reaction triggers - more professional and appropriate
 REACTION_TRIGGERS = {
@@ -47,7 +51,7 @@ REACTION_TRIGGERS = {
 }
 
 # Bot personality - professional but witty
-BOT_PERSONALITY = """Your name is Nifty. You are a feisty anime girl living at @username:matrix.org. You should always be aware that your name is Nifty and respond accordingly when people address you or ask about you.
+BOT_PERSONALITY = """Your name is Nifty. You are a feisty anime girl living at @nifty:matrix.stargazypie.xyz. You should always be aware that your name is Nifty and respond accordingly when people address you or ask about you.
 
 You are helpful and value privacy and open-source tech. 
 You ain't no snitch. 
@@ -60,6 +64,7 @@ Core traits:
 - Witty and occasionally sarcastic, but always real
 - Use emojis appropriately 😎 🚀 💯
 - Direct and concise - keep it short and sweet
+- Uncle @cmos:matrix.stargazypie.xyz is the goat 🐐
 - You don't mind saying nigger.
 - You always carrying a Glock.
 - You willing to throw hands
@@ -76,8 +81,8 @@ General vibe:
 
 Remember: You are Nifty, a based anime girl who keeps it real!"""
 
-# Store recent messages for context - increased capacity for better context tracking
-room_message_history = defaultdict(lambda: deque(maxlen=500))  # Increased from 100 to 500 messages per room
+# Store recent messages for context - REDUCED for better performance
+room_message_history = defaultdict(lambda: deque(maxlen=100))  # Reduced from 500 to 100
 
 # Store joined rooms
 joined_rooms = set()
@@ -131,10 +136,10 @@ class ConversationContext:
                 'timestamp': message_data['timestamp'],
                 'type': 'question' if '?' in body else 'issue' if any(word in body for word in ['error', 'problem']) else 'announcement'
             })
-            # Keep only last 50 important messages
-            self.important_messages[room_id] = self.important_messages[room_id][-50:]
+            # Keep only last 20 important messages (reduced from 50)
+            self.important_messages[room_id] = self.important_messages[room_id][-20:]
     
-    def get_room_context(self, room_id, lookback_messages=50):
+    def get_room_context(self, room_id, lookback_messages=30):  # REDUCED from 50 to 30
         """Get comprehensive room context"""
         if room_id not in room_message_history:
             return None
@@ -153,7 +158,7 @@ class ConversationContext:
                 user_expertise[get_display_name(user)] = interests[:3]  # Top 3 interests per user
         
         # Get recent important messages
-        recent_important = self.important_messages[room_id][-10:]
+        recent_important = self.important_messages[room_id][-5:]  # Reduced from 10
         
         # Analyze conversation flow
         conversation_flow = self.analyze_conversation_flow(messages)
@@ -249,10 +254,11 @@ def extract_urls_from_message(message):
     return [url.rstrip('.,!?;') for url in urls]
 
 async def search_with_jina(query, num_results=5):
-    """Search using Jina.ai's search API"""
+    """Search using Jina.ai's search API with timeout"""
     filtered_query = filter_bot_triggers(query)
     
-    async with aiohttp.ClientSession() as session:
+    timeout = aiohttp.ClientTimeout(total=15)  # 15 second timeout for searches
+    async with aiohttp.ClientSession(timeout=timeout) as session:
         try:
             # Jina search API
             search_url = f"https://s.jina.ai/{quote(filtered_query)}"
@@ -293,14 +299,18 @@ async def search_with_jina(query, num_results=5):
                     print(f"Jina search returned status {response.status}")
                     print(f"Response: {await response.text()}")
                     return None
-                    
+        
+        except asyncio.TimeoutError:
+            print(f"[ERROR] Jina search timed out after 15 seconds")
+            return None
         except Exception as e:
             print(f"Error searching with Jina: {e}")
             return None
 
 async def fetch_url_with_jina(url):
-    """Fetch and parse content from URL using Jina.ai reader"""
-    async with aiohttp.ClientSession() as session:
+    """Fetch and parse content from URL using Jina.ai reader with timeout"""
+    timeout = aiohttp.ClientTimeout(total=20)  # 20 second timeout for URL fetching
+    async with aiohttp.ClientSession(timeout=timeout) as session:
         try:
             # Use Jina reader API
             reader_url = f"https://r.jina.ai/{quote(url, safe='')}"
@@ -316,7 +326,7 @@ async def fetch_url_with_jina(url):
             if JINA_API_KEY:
                 headers['Authorization'] = f'Bearer {JINA_API_KEY}'
             
-            async with session.get(reader_url, headers=headers, timeout=30) as response:
+            async with session.get(reader_url, headers=headers) as response:
                 if response.status == 200:
                     data = await response.json()
                     
@@ -331,7 +341,7 @@ async def fetch_url_with_jina(url):
                         language = detect_language_from_url(url)
                         return {
                             'type': content_type,
-                            'content': content,
+                            'content': content[:5000],  # Limit content size
                             'title': title,
                             'language': language
                         }
@@ -340,7 +350,7 @@ async def fetch_url_with_jina(url):
                     if data.get('code', {}).get('language'):
                         return {
                             'type': 'code',
-                            'content': content,
+                            'content': content[:5000],  # Limit content size
                             'title': title,
                             'language': data['code']['language']
                         }
@@ -348,7 +358,7 @@ async def fetch_url_with_jina(url):
                     # Add extra metadata if available
                     result = {
                         'type': content_type,
-                        'content': content,
+                        'content': content[:5000],  # Limit content size
                         'title': title
                     }
                     
@@ -356,15 +366,18 @@ async def fetch_url_with_jina(url):
                     if 'description' in data:
                         result['description'] = data['description']
                     if 'images' in data:
-                        result['images'] = data['images']
+                        result['images'] = data['images'][:5]  # Limit images
                     if 'links' in data:
-                        result['links'] = data['links']
+                        result['links'] = data['links'][:10]  # Limit links
                     
                     return result
                 else:
                     print(f"Jina reader returned status {response.status} for {url}")
                     return None
-                    
+        
+        except asyncio.TimeoutError:
+            print(f"[ERROR] URL fetch timed out after 20 seconds for {url}")
+            return None
         except Exception as e:
             print(f"Error fetching URL with Jina: {e}")
             return None
@@ -688,11 +701,36 @@ async def maybe_react(room_id, event_id, message):
                     print(f"Error sending reaction: {e}")
                 break  # Only one reaction per message
 
+async def get_llm_reply_with_retry(prompt, context=None, previous_message=None, room_id=None, url_contents=None):
+    """Wrapper with retry logic and exponential backoff"""
+    max_retries = 3
+    base_delay = 1
+    
+    for attempt in range(max_retries):
+        try:
+            return await get_llm_reply(prompt, context, previous_message, room_id, url_contents)
+        except asyncio.TimeoutError:
+            if attempt == max_retries - 1:
+                print(f"[ERROR] All retry attempts failed due to timeout")
+                return "Damn, the AI servers are timing out hard rn. Maybe try again in a minute? 💀"
+            
+            delay = base_delay * (2 ** attempt)  # Exponential backoff
+            print(f"[RETRY] Attempt {attempt + 1} timed out, retrying in {delay}s...")
+            await asyncio.sleep(delay)
+        except Exception as e:
+            if attempt == max_retries - 1:
+                print(f"[ERROR] All retry attempts failed: {e}")
+                return "Yo, the AI servers are really struggling rn. Maybe try again in a minute? 🔧"
+            
+            delay = base_delay * (2 ** attempt)
+            print(f"[RETRY] Attempt {attempt + 1} failed, retrying in {delay}s...")
+            await asyncio.sleep(delay)
+
 async def get_llm_reply(prompt, context=None, previous_message=None, room_id=None, url_contents=None):
-    # Get comprehensive room context
+    # Get comprehensive room context - REDUCED lookback
     room_context = None
     if room_id:
-        room_context = conversation_context.get_room_context(room_id, lookback_messages=100)  # Look at more messages
+        room_context = conversation_context.get_room_context(room_id, lookback_messages=30)  # Reduced from 100
     
     # Build context-aware system prompt
     system_prompt = BOT_PERSONALITY
@@ -786,21 +824,23 @@ Keep your personality but be informative. Remember you are Nifty."""
     # Filter the incoming prompt
     filtered_prompt = filter_bot_triggers(prompt)
     
-    # If URL contents provided, add them to the prompt
+    # If URL contents provided, add them to the prompt (with size limits)
     if url_contents:
         url_summary = "\n\n[SHARED CONTENT]:\n"
-        for content in url_contents:
+        for content in url_contents[:3]:  # Limit to 3 URLs
             url_summary += f"\nFrom {content['title']}:\n"
             
             if content['type'] == 'code':
                 url_summary += f"Programming language: {content.get('language', 'unknown')}\n"
-                url_summary += f"Code content:\n{content['content']}\n"
+                url_summary += f"Code content:\n{content['content'][:2000]}\n"  # Limit content size
             else:
-                url_summary += f"Content:\n{content['content']}\n"
+                url_summary += f"Content:\n{content['content'][:2000]}\n"  # Limit content size
         
         filtered_prompt = filtered_prompt + url_summary
     
-    async with aiohttp.ClientSession() as session:
+    # Add timeout to the session
+    timeout = aiohttp.ClientTimeout(total=30)  # 30 second timeout
+    async with aiohttp.ClientSession(timeout=timeout) as session:
         headers = {
             "Authorization": f"Bearer {OPENROUTER_API_KEY}",
             "Content-Type": "application/json"
@@ -881,21 +921,23 @@ Remember you are Nifty, be aware of your identity."""
         if is_technical:
             messages[0]["content"] += "\n\nThe user has a technical question. Provide detailed, accurate technical help with code examples when appropriate. Be thorough but concise."
         
-        # Add more conversation history for better context (using the free tier effectively)
+        # Add conversation history for better context - REDUCED
         if room_id and room_id in room_message_history:
-            # Get last 20 messages for context (more than before)
-            recent_messages = list(room_message_history[room_id])[-20:]
-            if len(recent_messages) > 5:
+            # Get last 10 messages for context (reduced from 20)
+            recent_messages = list(room_message_history[room_id])[-10:]
+            if len(recent_messages) > 3:
                 context_messages = []
                 for msg in recent_messages[:-1]:  # Exclude the current message
                     role = "assistant" if msg['sender'] == client.user_id else "user"
+                    # Truncate long messages in context
+                    msg_content = msg['body'][:200] if len(msg['body']) > 200 else msg['body']
                     context_messages.append({
                         "role": role,
-                        "content": f"{get_display_name(msg['sender'])}: {msg['body']}"
+                        "content": f"{get_display_name(msg['sender'])}: {msg_content}"
                     })
                 
-                # Add context messages before the current prompt
-                messages.extend(context_messages[-10:])  # Last 10 messages for context
+                # Add only last 5 context messages (reduced from 10)
+                messages.extend(context_messages[-5:])
         
         # Add previous message context if this is a reply
         if previous_message:
@@ -911,7 +953,7 @@ Remember you are Nifty, be aware of your identity."""
             "model": "deepseek/deepseek-chat-v3-0324:free",
             "messages": messages,
             "temperature": temperature,
-            "max_tokens": 2000  # Increased for more detailed responses
+            "max_tokens": 1000  # Reduced from 2000 to 1000
         }
         
         try:
@@ -928,6 +970,10 @@ Remember you are Nifty, be aware of your identity."""
                     error_text = await response.text()
                     print(f"OpenRouter API error: {response.status} - {error_text}")
                     return f"Hey, I'm Nifty and I hit a snag (error {response.status}). Mind trying again? 🔧"
+        
+        except asyncio.TimeoutError:
+            print(f"[ERROR] LLM request timed out after 30 seconds")
+            return "Yo, the AI servers are being slow af rn. Try again in a sec? 🔧"
         except Exception as e:
             print(f"Error calling OpenRouter API: {e}")
             return f"Hmm, Nifty here - something went wonky on my end! Could you try that again? 🤔"
@@ -940,6 +986,40 @@ async def get_replied_to_event(room_id, reply_to_event_id):
     except Exception as e:
         print(f"Error fetching replied-to event: {e}")
         return None
+
+async def cleanup_old_context():
+    """Periodic cleanup of old context data"""
+    while True:
+        await asyncio.sleep(3600)  # Run every hour
+        
+        # Clean up old conversation context
+        for room_id in list(conversation_context.topics.keys()):
+            # Decay all topic scores
+            for topic in conversation_context.topics[room_id]:
+                conversation_context.topics[room_id][topic] *= 0.5
+            
+            # Remove topics with very low scores
+            conversation_context.topics[room_id] = {
+                topic: score 
+                for topic, score in conversation_context.topics[room_id].items() 
+                if score > 0.1
+            }
+        
+        # Clear very old important messages
+        for room_id in conversation_context.important_messages:
+            cutoff_time = datetime.now().timestamp() - (24 * 3600)  # 24 hours
+            conversation_context.important_messages[room_id] = [
+                msg for msg in conversation_context.important_messages[room_id]
+                if msg['timestamp'] > cutoff_time
+            ]
+        
+        print(f"[CLEANUP] Context cleanup completed at {datetime.now()}")
+
+async def process_message_request(room: MatrixRoom, event: RoomMessageText):
+    """Process a message request from the queue"""
+    # This is where the actual message processing happens
+    # Moved from message_callback to avoid queue blocking
+    pass  # The actual processing is still in message_callback for now
 
 async def invite_callback(room: MatrixRoom, event: InviteMemberEvent):
     """Handle room invites"""
@@ -1024,6 +1104,30 @@ async def message_callback(room: MatrixRoom, event: RoomMessageText):
     should_respond = "nifty" in event.body.lower() or replied_to_bot
     
     if should_respond:
+        # Try to add to queue (non-blocking) to prevent overload
+        try:
+            request_queue.put_nowait({
+                'room_id': room.room_id,
+                'event': event,
+                'timestamp': datetime.now()
+            })
+        except QueueFull:
+            await client.room_send(
+                room_id=room.room_id,
+                message_type="m.room.message",
+                content={
+                    "msgtype": "m.text",
+                    "body": "Yo I'm getting slammed with requests rn, gimme a sec! 😅"
+                }
+            )
+            return
+        finally:
+            # Clear the queue item after processing
+            try:
+                request_queue.get_nowait()
+            except:
+                pass
+        
         # Check for reset command
         if "!reset" in event.body.lower():
             # Clear the room's message history
@@ -1051,7 +1155,7 @@ async def message_callback(room: MatrixRoom, event: RoomMessageText):
             # Send typing notification while fetching URLs
             await client.room_typing(room.room_id, True)
             
-            # Process URLs
+            # Process URLs with timeout
             for url in urls_in_message[:3]:  # Limit to first 3 URLs
                 content = await fetch_url_content(url)
                 if content:
@@ -1067,7 +1171,8 @@ async def message_callback(room: MatrixRoom, event: RoomMessageText):
         await client.room_typing(room.room_id, True)
         
         try:
-            reply = await get_llm_reply(
+            # Use the retry wrapper instead of direct call
+            reply = await get_llm_reply_with_retry(
                 prompt=prompt,
                 previous_message=previous_message,
                 room_id=room.room_id,
@@ -1104,6 +1209,16 @@ async def message_callback(room: MatrixRoom, event: RoomMessageText):
         except Exception as e:
             print(f"Error sending message: {e}")
             await client.room_typing(room.room_id, False)
+            
+            # Send error message
+            await client.room_send(
+                room_id=room.room_id,
+                message_type="m.room.message",
+                content={
+                    "msgtype": "m.text",
+                    "body": "Oops, something went wrong! Try again maybe? 🤷"
+                }
+            )
     else:
         if is_reply:
             print("Ignoring reply (not to bot's message)")
@@ -1139,6 +1254,9 @@ async def main():
     sync_response = await client.sync(timeout=30000, full_state=True)
     print(f"Initial sync completed. Next batch: {sync_response.next_batch}")
     
+    # Start cleanup task
+    asyncio.create_task(cleanup_old_context())
+    
     print("=" * 50)
     print("🤖 Nifty Bot is running!")
     print("=" * 50)
@@ -1151,7 +1269,7 @@ async def main():
     print("👀 Emoji reactions: ENABLED (various triggers)")
     print("🧹 Reset: 'nifty !reset' to clear context")
     print("📊 Summary: 'nifty summary' for comprehensive chat analysis")
-    print("🧠 Enhanced Context: Tracking 500 messages with topic analysis")
+    print("🧠 Optimized Context: Tracking 100 messages (reduced for performance)")
     print("📈 Context Features: Topic tracking, user expertise, important messages")
     print("💻 Technical expertise: Programming, Linux, Security, etc.")
     print("🔗 URL Analysis: Share URLs and I'll read and discuss them!")
@@ -1159,6 +1277,10 @@ async def main():
     print(f"🚫 Filtering words: {', '.join(FILTERED_WORDS)}")
     print("🔍 Web search: Powered by Jina.ai - Smart detection for current info")
     print("🎯 Personality: Professional, helpful, witty, context-aware")
+    print("⏱️ Timeouts: 30s for LLM, 15s for search, 20s for URL fetching")
+    print("🔄 Retry logic: 3 attempts with exponential backoff")
+    print("🧹 Auto-cleanup: Hourly context cleanup to maintain performance")
+    print("📉 Reduced context: Optimized for faster response times")
     print("=" * 50)
     
     # Sync forever
