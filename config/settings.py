@@ -8,7 +8,8 @@ load_dotenv()
 # Integration toggles
 INTEGRATIONS = {
     'matrix': os.getenv("ENABLE_MATRIX", "true").lower() == "true",
-    'discord': os.getenv("ENABLE_DISCORD", "false").lower() == "true"
+    'discord': os.getenv("ENABLE_DISCORD", "false").lower() == "true",
+    'telegram': os.getenv("ENABLE_TELEGRAM", "false").lower() == "true"
 }
 
 # Matrix credentials - no defaults for sensitive data
@@ -20,6 +21,11 @@ PASSWORD = os.getenv("MATRIX_PASSWORD")
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 DISCORD_COMMAND_PREFIX = os.getenv("DISCORD_COMMAND_PREFIX", "!")
 DISCORD_ALLOWED_GUILDS = os.getenv("DISCORD_ALLOWED_GUILDS", "").split(",") if os.getenv("DISCORD_ALLOWED_GUILDS") else []
+
+# Telegram credentials - no defaults for sensitive data
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_ALLOWED_USERS = os.getenv("TELEGRAM_ALLOWED_USERS", "").split(",") if os.getenv("TELEGRAM_ALLOWED_USERS") else []
+TELEGRAM_ALLOWED_GROUPS = os.getenv("TELEGRAM_ALLOWED_GROUPS", "").split(",") if os.getenv("TELEGRAM_ALLOWED_GROUPS") else []
 
 # OpenRouter config - no defaults for API keys
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
