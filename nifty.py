@@ -6,13 +6,9 @@ Main entry point for the application
 import asyncio
 import logging
 import sys
-from nio import AsyncClient, LoginResponse, RoomMessageText, InviteMemberEvent
 from config.settings import (
     HOMESERVER, USERNAME, PASSWORD, INTEGRATIONS
 )
-from modules.message_handler import message_callback
-from modules.invite_handler import invite_callback, joined_rooms
-from modules.cleanup import cleanup_old_context
 
 # Configure logging
 logging.basicConfig(
@@ -26,6 +22,21 @@ async def run_matrix_bot():
     if not INTEGRATIONS.get('matrix', True):
         logger.info("Matrix integration disabled")
         return
+    
+    # Check for required Matrix credentials
+    if not all([HOMESERVER, USERNAME, PASSWORD]):
+        logger.error("Matrix credentials not configured. Please set MATRIX_HOMESERVER, MATRIX_USERNAME, and MATRIX_PASSWORD in .env file")
+        print("\n❌ ERROR: Matrix credentials missing!")
+        print("Please configure the following in your .env file:")
+        print("  - MATRIX_HOMESERVER")
+        print("  - MATRIX_USERNAME")
+        print("  - MATRIX_PASSWORD")
+        return
+    
+    from nio import AsyncClient, LoginResponse, RoomMessageText, InviteMemberEvent
+    from modules.message_handler import message_callback
+    from modules.invite_handler import invite_callback, joined_rooms
+    from modules.cleanup import cleanup_old_context
         
     client = AsyncClient(HOMESERVER, USERNAME)
     
@@ -68,7 +79,7 @@ async def run_matrix_bot():
         print("=" * 50)
         print("🤖 Nifty Bot - Matrix Integration Active!")
         print("=" * 50)
-        print("✅ Identity: @nifty:matrix.stargazypie.xyz")
+        print(f"✅ Identity: {USERNAME}")
         print("✅ Listening for messages in all joined rooms")
         print("✅ Auto-accepting room invites")
         print("📝 Trigger: Say 'nifty' anywhere in a message")
@@ -103,6 +114,14 @@ async def run_discord_bot():
     """Run the Discord bot"""
     if not INTEGRATIONS.get('discord', False):
         logger.info("Discord integration disabled")
+        return
+    
+    # Check for required Discord credentials
+    from config.settings import DISCORD_TOKEN
+    if not DISCORD_TOKEN:
+        logger.error("Discord token not configured. Please set DISCORD_TOKEN in .env file")
+        print("\n❌ ERROR: Discord token missing!")
+        print("Please configure DISCORD_TOKEN in your .env file")
         return
         
     try:
