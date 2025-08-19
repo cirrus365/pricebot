@@ -4,13 +4,14 @@ import html
 from datetime import datetime
 from asyncio import Queue, QueueFull
 from nio import MatrixRoom, RoomMessageText
-from config.settings import KNOWN_BOTS, MAX_QUEUE_SIZE, FILTERED_WORDS
+from config.settings import KNOWN_BOTS, MAX_QUEUE_SIZE, FILTERED_WORDS, ENABLE_PRICE_TRACKING
 from utils.helpers import extract_urls_from_message, filter_bot_triggers
 from utils.formatting import extract_code_from_response
 from modules.context import room_message_history, conversation_context
 from modules.reactions import maybe_react
 from modules.web_search import fetch_url_content
 from modules.llm import get_llm_reply_with_retry
+from modules.price_tracker import price_tracker
 
 # Create a request queue to prevent overload
 request_queue = Queue(maxsize=MAX_QUEUE_SIZE)
@@ -38,6 +39,8 @@ async def send_formatted_message(client, room_id, reply_text):
             # Format text with inline code support
             text = part['content']
             formatted_text = re.sub(r'`([^`]+)`', r'<code>\1</code>', text)
+            # Handle bold formatting
+            formatted_text = re.sub(r'\*\*([^*]+)\*\*', r'<strong>\1</strong>', formatted_text)
             formatted_body += f"<p>{formatted_text}</p>"
             plain_body += text + "\n\n"
             
@@ -117,6 +120,14 @@ async def message_callback(client, room: MatrixRoom, event: RoomMessageText):
                 replied_to_bot = True
                 previous_message = replied_event.event.body
                 print(f"[DEBUG] User is replying to bot's message: {previous_message[:50]}...")
+    
+    # Check for price requests first (before bot mention check)
+    if ENABLE_PRICE_TRACKING:
+        price_response = await price_tracker.get_price_response(event.body)
+        if price_response:
+            print(f"[DEBUG] Detected price request, sending response")
+            await send_formatted_message(client, room.room_id, price_response)
+            return
     
     # Check for direct mention or reply
     should_respond = "nifty" in event.body.lower() or replied_to_bot

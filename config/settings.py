@@ -25,6 +25,7 @@ MAX_QUEUE_SIZE = 5
 LLM_TIMEOUT = 30
 SEARCH_TIMEOUT = 15
 URL_FETCH_TIMEOUT = 20
+PRICE_FETCH_TIMEOUT = 10
 
 # Context settings
 MAX_ROOM_HISTORY = 100
@@ -34,3 +35,7 @@ MAX_IMPORTANT_MESSAGES = 20
 # Retry settings
 MAX_RETRIES = 3
 BASE_RETRY_DELAY = 1
+
+# Price tracking settings
+PRICE_CACHE_TTL = 300  # 5 minutes cache for price data
+ENABLE_PRICE_TRACKING = True  # Toggle price tracking feature

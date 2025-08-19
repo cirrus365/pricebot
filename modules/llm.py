@@ -5,13 +5,15 @@ import re
 from datetime import datetime
 from config.settings import (
     OPENROUTER_API_KEY, OPENROUTER_URL, LLM_TIMEOUT,
-    MAX_RETRIES, BASE_RETRY_DELAY, MAX_CONTEXT_LOOKBACK, FILTERED_WORDS
+    MAX_RETRIES, BASE_RETRY_DELAY, MAX_CONTEXT_LOOKBACK, FILTERED_WORDS,
+    ENABLE_PRICE_TRACKING
 )
 from config.personality import BOT_PERSONALITY
 from utils.helpers import filter_bot_triggers, get_display_name, detect_code_in_message
 from utils.formatting import summarize_search_results
 from modules.context import room_message_history, conversation_context, create_comprehensive_summary
 from modules.web_search import needs_web_search, search_with_jina, search_technical_docs
+from modules.price_tracker import price_tracker
 
 async def get_llm_reply_with_retry(prompt, context=None, previous_message=None, room_id=None, url_contents=None):
     """Wrapper with retry logic and exponential backoff"""
@@ -43,6 +45,10 @@ async def get_llm_reply(prompt, context=None, previous_message=None, room_id=Non
     
     # Build context-aware system prompt
     system_prompt = BOT_PERSONALITY
+    
+    # Add price tracking capability to system prompt
+    if ENABLE_PRICE_TRACKING:
+        system_prompt += "\n\nYou have access to real-time cryptocurrency and fiat exchange rates. When users ask about prices, you can provide current market data including price, 24h change, and volume. You're knowledgeable about crypto markets, especially privacy coins like Monero."
     
     # Add rich context to system prompt
     if room_context:
@@ -84,6 +90,28 @@ async def get_llm_reply(prompt, context=None, previous_message=None, room_id=Non
     
     if about_nifty:
         prompt = f"{prompt}\n\n[Remember: You are Nifty, a Matrix bot with the handle @nifty:matrix.stargazypie.xyz. Be self-aware about your identity.]"
+    
+    # Check for price-related questions
+    price_keywords = ['price', 'cost', 'worth', 'value', 'exchange', 'convert', 'btc', 'eth', 'xmr', 'monero', 'bitcoin', 'ethereum', 'usd', 'eur', 'gbp']
+    is_price_query = any(keyword in prompt.lower() for keyword in price_keywords)
+    
+    # If it's a price query, try to get price data
+    if is_price_query and ENABLE_PRICE_TRACKING:
+        price_info = await price_tracker.parse_price_request(prompt)
+        if price_info:
+            # Get the price data
+            if price_info['type'] == 'crypto':
+                price_data = await price_tracker.get_crypto_price(price_info['from'], price_info['to'])
+                if price_data:
+                    price_context = f"\n\n[CURRENT MARKET DATA: {price_info['from']} = {price_tracker.format_price(price_data['price'], price_info['to'])}"
+                    if price_data.get('change_24h') is not None:
+                        price_context += f", 24h change: {price_data['change_24h']:.2f}%"
+                    price_context += "]"
+                    prompt += price_context
+            elif price_info['type'] == 'fiat':
+                rate = await price_tracker.get_fiat_rate(price_info['from'], price_info['to'])
+                if rate:
+                    prompt += f"\n\n[CURRENT EXCHANGE RATE: 1 {price_info['from']} = {price_tracker.format_price(rate, price_info['to'])}]"
     
     # Check for technical questions or code
     is_technical = detect_code_in_message(prompt) or any(keyword in prompt.lower() for keyword in [
@@ -157,7 +185,7 @@ Keep your personality but be informative. Remember you are Nifty."""
         
         # Smart web search detection
         should_search = False
-        if not wants_summary and not about_nifty and not url_contents:
+        if not wants_summary and not about_nifty and not url_contents and not is_price_query:
             should_search = await needs_web_search(filtered_prompt, room_context)
         
         # Search for technical docs if it's a technical question
