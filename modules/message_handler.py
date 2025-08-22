@@ -129,8 +129,18 @@ async def message_callback(client, room: MatrixRoom, event: RoomMessageText):
             await send_formatted_message(client, room.room_id, price_response)
             return
     
-    # Check for direct mention or reply (using configured bot username)
-    should_respond = BOT_USERNAME in event.body.lower() or replied_to_bot
+    # Extract the bot's display name and username from its Matrix ID
+    # client.user_id is like "@simpletest888:matrix.org"
+    bot_localpart = client.user_id.split(':')[0][1:]  # Remove @ and domain to get "simpletest888"
+    
+    # Check for direct mention or reply
+    # Check both the configured BOT_USERNAME and the actual Matrix username
+    message_lower = event.body.lower()
+    should_respond = (
+        BOT_USERNAME in message_lower or 
+        bot_localpart.lower() in message_lower or
+        replied_to_bot
+    )
     
     if should_respond:
         # Try to add to queue (non-blocking) to prevent overload
@@ -252,4 +262,4 @@ async def message_callback(client, room: MatrixRoom, event: RoomMessageText):
         if is_reply:
             print("Ignoring reply (not to bot's message)")
         else:
-            print(f"Ignoring message (doesn't contain '{BOT_USERNAME}')")
+            print(f"Ignoring message (doesn't contain '{BOT_USERNAME}' or '{bot_localpart}')")
