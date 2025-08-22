@@ -6,7 +6,7 @@ from discord.ext import commands
 import asyncio
 from typing import Optional
 import logging
-from config.settings import DISCORD_TOKEN, DISCORD_COMMAND_PREFIX, DISCORD_ALLOWED_GUILDS
+from config.settings import DISCORD_TOKEN, DISCORD_COMMAND_PREFIX, DISCORD_ALLOWED_GUILDS, BOT_USERNAME
 from config.personality import BOT_PERSONALITY
 from modules.llm import get_llm_reply
 from modules.price_tracker import price_tracker
@@ -28,7 +28,7 @@ class NiftyDiscordBot(commands.Bot):
         super().__init__(
             command_prefix=DISCORD_COMMAND_PREFIX,
             intents=intents,
-            description="Nifty - Your feisty anime assistant"
+            description=f"{BOT_USERNAME.capitalize()} - Your feisty anime assistant"
         )
         
         self.conversation_history = {}  # channel_id -> list of messages
@@ -168,7 +168,7 @@ class NiftyCommands(commands.Cog):
     async def help_command(self, ctx):
         """Custom help command"""
         embed = discord.Embed(
-            title="Nifty Bot Commands",
+            title=f"{BOT_USERNAME.capitalize()} Bot Commands",
             description="Here's what I can do!",
             color=discord.Color.purple()
         )
@@ -197,7 +197,7 @@ class NiftyCommands(commands.Cog):
             inline=False
         )
         
-        embed.set_footer(text="Made with 💜 by the Nifty team")
+        embed.set_footer(text=f"Made with 💜 by the {BOT_USERNAME.capitalize()} team")
         await ctx.send(embed=embed)
         
     @commands.command(name='price', help='Get cryptocurrency prices')
@@ -224,7 +224,7 @@ class NiftyCommands(commands.Cog):
     async def stats_command(self, ctx):
         """Show bot statistics"""
         embed = discord.Embed(
-            title="📊 Nifty Bot Statistics",
+            title=f"📊 {BOT_USERNAME.capitalize()} Bot Statistics",
             color=discord.Color.blue()
         )
         
@@ -271,9 +271,10 @@ async def run_discord_bot():
     bot = NiftyDiscordBot()
     
     print("=" * 50)
-    print("🤖 Nifty Bot - Discord Integration Active!")
+    print(f"🤖 {BOT_USERNAME.capitalize()} Bot - Discord Integration Active!")
     print("=" * 50)
     print("✅ Discord bot starting...")
+    print(f"✅ Bot Name: {BOT_USERNAME.capitalize()}")
     print("📝 Commands: Use ! prefix (e.g., !help)")
     print("💬 Chat: Mention the bot or reply to its messages")
     print("💰 Price tracking: !price <crypto> or !xmr")

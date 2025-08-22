@@ -5,6 +5,9 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
+# Bot configuration
+BOT_USERNAME = os.getenv("BOT_USERNAME", "nifty").lower()
+
 # Integration toggles
 INTEGRATIONS = {
     'matrix': os.getenv("ENABLE_MATRIX", "true").lower() == "true",

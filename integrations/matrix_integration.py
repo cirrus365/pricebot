@@ -4,7 +4,7 @@ Matrix integration for Nifty Bot
 import asyncio
 import logging
 from nio import AsyncClient, LoginResponse, RoomMessageText, InviteMemberEvent
-from config.settings import HOMESERVER, USERNAME, PASSWORD
+from config.settings import HOMESERVER, USERNAME, PASSWORD, BOT_USERNAME
 from modules.message_handler import message_callback
 from modules.invite_handler import invite_callback, joined_rooms
 from modules.cleanup import cleanup_old_context
@@ -62,17 +62,18 @@ async def run_matrix_bot():
         asyncio.create_task(cleanup_old_context())
         
         print("=" * 50)
-        print("🤖 Nifty Bot - Matrix Integration Active!")
+        print(f"🤖 {BOT_USERNAME.capitalize()} Bot - Matrix Integration Active!")
         print("=" * 50)
         print(f"✅ Identity: {USERNAME}")
+        print(f"✅ Bot Name: {BOT_USERNAME.capitalize()}")
         print("✅ Listening for messages in all joined rooms")
         print("✅ Auto-accepting room invites")
-        print("📝 Trigger: Say 'nifty' anywhere in a message")
+        print(f"📝 Trigger: Say '{BOT_USERNAME}' anywhere in a message")
         print("💬 Or reply directly to any of my messages")
         print("❌ Random responses: DISABLED")
         print("👀 Emoji reactions: ENABLED (various triggers)")
-        print("🧹 Reset: 'nifty !reset' to clear context")
-        print("📊 Summary: 'nifty summary' for comprehensive chat analysis")
+        print(f"🧹 Reset: '{BOT_USERNAME} !reset' to clear context")
+        print(f"📊 Summary: '{BOT_USERNAME} summary' for comprehensive chat analysis")
         print("🧠 Optimized Context: Tracking 100 messages (reduced for performance)")
         print("📈 Context Features: Topic tracking, user expertise, important messages")
         print("💻 Technical expertise: Programming, Linux, Security, etc.")

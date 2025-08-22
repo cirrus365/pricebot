@@ -4,7 +4,7 @@ import html
 from datetime import datetime
 from asyncio import Queue, QueueFull
 from nio import MatrixRoom, RoomMessageText
-from config.settings import KNOWN_BOTS, MAX_QUEUE_SIZE, FILTERED_WORDS, ENABLE_PRICE_TRACKING
+from config.settings import KNOWN_BOTS, MAX_QUEUE_SIZE, FILTERED_WORDS, ENABLE_PRICE_TRACKING, BOT_USERNAME
 from utils.helpers import extract_urls_from_message, filter_bot_triggers
 from utils.formatting import extract_code_from_response
 from modules.context import room_message_history, conversation_context
@@ -129,8 +129,8 @@ async def message_callback(client, room: MatrixRoom, event: RoomMessageText):
             await send_formatted_message(client, room.room_id, price_response)
             return
     
-    # Check for direct mention or reply
-    should_respond = "nifty" in event.body.lower() or replied_to_bot
+    # Check for direct mention or reply (using configured bot username)
+    should_respond = BOT_USERNAME in event.body.lower() or replied_to_bot
     
     if should_respond:
         # Try to add to queue (non-blocking) to prevent overload
@@ -167,7 +167,7 @@ async def message_callback(client, room: MatrixRoom, event: RoomMessageText):
                 message_type="m.room.message",
                 content={
                     "msgtype": "m.text",
-                    "body": "✨ Nifty's context cleared! Fresh start! 🧹"
+                    "body": f"✨ {BOT_USERNAME.capitalize()}'s context cleared! Fresh start! 🧹"
                 }
             )
             return
@@ -252,4 +252,4 @@ async def message_callback(client, room: MatrixRoom, event: RoomMessageText):
         if is_reply:
             print("Ignoring reply (not to bot's message)")
         else:
-            print("Ignoring message (doesn't contain 'nifty')")
+            print(f"Ignoring message (doesn't contain '{BOT_USERNAME}')")

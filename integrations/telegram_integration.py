@@ -7,7 +7,7 @@ from typing import Optional
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 from telegram.constants import ParseMode, ChatAction
-from config.settings import TELEGRAM_BOT_TOKEN, TELEGRAM_ALLOWED_USERS, TELEGRAM_ALLOWED_GROUPS
+from config.settings import TELEGRAM_BOT_TOKEN, TELEGRAM_ALLOWED_USERS, TELEGRAM_ALLOWED_GROUPS, BOT_USERNAME
 from config.personality import BOT_PERSONALITY
 from modules.llm import get_llm_reply
 from modules.price_tracker import price_tracker
@@ -76,7 +76,7 @@ class TelegramBot:
             return
             
         welcome_message = (
-            "👋 Hey! I'm Nifty, your feisty anime assistant!\n\n"
+            f"👋 Hey! I'm {BOT_USERNAME.capitalize()}, your feisty anime assistant!\n\n"
             "Here's what I can do:\n"
             "💬 Just chat with me normally\n"
             "💰 /price <crypto> - Get crypto prices\n"
@@ -94,7 +94,7 @@ class TelegramBot:
             return
             
         help_text = (
-            "🤖 *Nifty Bot Commands*\n\n"
+            f"🤖 *{BOT_USERNAME.capitalize()} Bot Commands*\n\n"
             "*Chat Commands:*\n"
             "💬 Just send me a message to chat!\n"
             "/reset - Clear conversation history\n\n"
@@ -169,7 +169,7 @@ class TelegramBot:
             return
             
         stats_message = (
-            "📊 *Nifty Bot Statistics*\n\n"
+            f"📊 *{BOT_USERNAME.capitalize()} Bot Statistics*\n\n"
             f"💬 Active Chats: {len(self.conversation_history)}\n"
             f"📝 Total Messages Tracked: {sum(len(h) for h in self.conversation_history.values())}\n"
             f"🧠 Max History per Chat: {self.max_history} messages\n"
@@ -240,7 +240,7 @@ class TelegramBot:
                 response = format_code_blocks(response)
                 
             # Store bot response in history
-            self.store_message(chat_id, "Nifty", response)
+            self.store_message(chat_id, BOT_USERNAME.capitalize(), response)
             
             # Split long messages
             if len(response) > 4096:
@@ -294,9 +294,10 @@ async def run_telegram_bot():
         application.add_error_handler(bot.error_handler)
         
         print("=" * 50)
-        print("🤖 Nifty Bot - Telegram Integration Active!")
+        print(f"🤖 {BOT_USERNAME.capitalize()} Bot - Telegram Integration Active!")
         print("=" * 50)
         print("✅ Telegram bot starting...")
+        print(f"✅ Bot Name: {BOT_USERNAME.capitalize()}")
         print("📝 Commands: /help to see all commands")
         print("💬 Chat: Just send a message to chat")
         print("💰 Price tracking: /price <crypto> or /xmr")
