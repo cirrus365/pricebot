@@ -4,7 +4,7 @@ import aiohttp
 import re
 from datetime import datetime
 from config.settings import (
-    OPENROUTER_API_KEY, OPENROUTER_URL, LLM_TIMEOUT,
+    OPENROUTER_API_KEY, OPENROUTER_URL, OPENROUTER_MODEL, LLM_TIMEOUT,
     MAX_RETRIES, BASE_RETRY_DELAY, MAX_CONTEXT_LOOKBACK, FILTERED_WORDS,
     ENABLE_PRICE_TRACKING
 )
@@ -287,7 +287,7 @@ Remember you are Nifty, be aware of your identity."""
         temperature = 0.7 if is_technical else 0.8
         
         data = {
-            "model": "deepseek/deepseek-chat-v3-0324:free",
+            "model": OPENROUTER_MODEL,
             "messages": messages,
             "temperature": temperature,
             "max_tokens": 1000
