@@ -215,14 +215,34 @@ class PriceTracker:
         """Parse message for price requests"""
         message_lower = message.lower()
         
-        # Patterns for crypto prices
-        crypto_patterns = [
-            r'\b([a-z]{2,5})\s+(?:to\s+)?([a-z]{3,4})\b',  # btc usd, xmr to eur
-            r'\b([a-z]{2,5})\s+price\s+(?:in\s+)?([a-z]{3,4})?\b',  # btc price in usd
-            r'price\s+(?:of\s+)?([a-z]{2,5})\s+(?:in\s+)?([a-z]{3,4})?\b',  # price of eth in eur
+        # Simple patterns for just crypto symbols (e.g., "btc", "xmr", "eth")
+        simple_crypto_patterns = [
+            r'^([a-z]{2,5})$',  # Just the crypto symbol
+            r'price\s+([a-z]{2,5})$',  # price btc
+            r'^([a-z]{2,5})\s+price$',  # btc price
         ]
         
-        # Check for crypto price requests
+        # Check for simple crypto requests (default to USD)
+        for pattern in simple_crypto_patterns:
+            match = re.search(pattern, message_lower.strip())
+            if match:
+                potential_crypto = match.group(1).upper()
+                # Check if it's a known crypto or likely crypto (short symbol)
+                if potential_crypto in cls.CRYPTO_SYMBOLS or (len(potential_crypto) <= 5 and potential_crypto not in cls.COMMON_FIAT):
+                    return {
+                        'type': 'crypto',
+                        'from': potential_crypto,
+                        'to': 'USD'  # Default to USD
+                    }
+        
+        # Patterns for crypto prices with specified fiat
+        crypto_patterns = [
+            r'\b([a-z]{2,5})\s+(?:to\s+|in\s+)?([a-z]{3,4})\b',  # btc usd, xmr to eur
+            r'\b([a-z]{2,5})\s+price\s+(?:in\s+)?([a-z]{3,4})\b',  # btc price in usd
+            r'price\s+(?:of\s+)?([a-z]{2,5})\s+(?:in\s+)?([a-z]{3,4})\b',  # price of eth in eur
+        ]
+        
+        # Check for crypto price requests with fiat
         for pattern in crypto_patterns:
             match = re.search(pattern, message_lower)
             if match:
@@ -230,7 +250,7 @@ class PriceTracker:
                 potential_fiat = match.group(2).upper() if match.group(2) else 'USD'
                 
                 # Check if it's a known crypto
-                if potential_crypto in cls.CRYPTO_SYMBOLS or len(potential_crypto) <= 5:
+                if potential_crypto in cls.CRYPTO_SYMBOLS or (len(potential_crypto) <= 5 and potential_crypto not in cls.COMMON_FIAT):
                     # Verify it's likely a fiat currency for the second part
                     if potential_fiat in cls.COMMON_FIAT:
                         return {
@@ -273,7 +293,7 @@ class PriceTracker:
                 from_currency = match.group(1).upper()
                 to_currency = match.group(2).upper() if len(match.groups()) > 1 else match.group(1).upper()
                 
-                # Check if both are fiat currencies
+                # Check if both are fiat currencies (avoid matching crypto)
                 if from_currency in cls.COMMON_FIAT and to_currency in cls.COMMON_FIAT:
                     return {
                         'type': 'fiat',
