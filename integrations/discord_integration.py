@@ -28,7 +28,7 @@ class NiftyDiscordBot(commands.Bot):
         super().__init__(
             command_prefix=DISCORD_COMMAND_PREFIX,
             intents=intents,
-            description=f"{BOT_USERNAME.capitalize()} - Your feisty anime assistant"
+            description=f"{BOT_USERNAME.capitalize()} - Your digital assistant"
         )
         
         self.conversation_history = {}  # channel_id -> list of messages

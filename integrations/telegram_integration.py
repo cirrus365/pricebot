@@ -76,7 +76,7 @@ class TelegramBot:
             return
             
         welcome_message = (
-            f"👋 Hey! I'm {BOT_USERNAME.capitalize()}, your feisty anime assistant!\n\n"
+            f"👋 Hey! I'm {BOT_USERNAME.capitalize()}, your digital assistant!\n\n"
             "Here's what I can do:\n"
             "💬 Just chat with me normally\n"
             "💰 /price <crypto> - Get crypto prices\n"
