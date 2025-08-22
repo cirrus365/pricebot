@@ -17,7 +17,9 @@ class PriceTracker:
         'USD': '$', 'EUR': '€', 'GBP': '£', 'JPY': '¥', 
         'CNY': '¥', 'INR': '₹', 'KRW': '₩', 'RUB': '₽',
         'CAD': 'C$', 'AUD': 'A$', 'CHF': 'Fr', 'SEK': 'kr',
-        'NOK': 'kr', 'DKK': 'kr', 'PLN': 'zł', 'CZK': 'Kč'
+        'NOK': 'kr', 'DKK': 'kr', 'PLN': 'zł', 'CZK': 'Kč',
+        'NZD': 'NZ$', 'MXN': '$', 'BRL': 'R$', 'ZAR': 'R',
+        'HKD': 'HK$', 'SGD': 'S$', 'THB': '฿', 'TRY': '₺'
     }
     
     # Common crypto symbols
@@ -27,6 +29,14 @@ class PriceTracker:
         'DOT': 'polkadot', 'LINK': 'chainlink', 'UNI': 'uniswap',
         'SOL': 'solana', 'MATIC': 'polygon', 'AVAX': 'avalanche',
         'ATOM': 'cosmos', 'XRP': 'ripple', 'BNB': 'binancecoin'
+    }
+    
+    # Common fiat currencies for validation
+    COMMON_FIAT = {
+        'USD', 'EUR', 'GBP', 'JPY', 'CNY', 'INR', 'KRW', 'RUB',
+        'CAD', 'AUD', 'CHF', 'SEK', 'NOK', 'DKK', 'PLN', 'CZK',
+        'NZD', 'MXN', 'BRL', 'ZAR', 'HKD', 'SGD', 'THB', 'TRY',
+        'ARS', 'CLP', 'COP', 'PEN', 'UYU', 'PHP', 'MYR', 'IDR'
     }
     
     @staticmethod
@@ -182,7 +192,8 @@ class PriceTracker:
         
         formatted = f"{amount:,.{decimals}f}"
         
-        if symbol and currency in ['USD', 'GBP', 'EUR', 'INR']:
+        # Handle currency symbol placement
+        if symbol and currency in ['USD', 'GBP', 'EUR', 'INR', 'CAD', 'AUD', 'NZD', 'HKD', 'SGD', 'MXN', 'BRL', 'ZAR']:
             return f"{symbol}{formatted}"
         elif symbol:
             return f"{formatted} {symbol}"
@@ -221,39 +232,54 @@ class PriceTracker:
                 # Check if it's a known crypto
                 if potential_crypto in cls.CRYPTO_SYMBOLS or len(potential_crypto) <= 5:
                     # Verify it's likely a fiat currency for the second part
-                    if potential_fiat in cls.FIAT_SYMBOLS or potential_fiat in ['USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD']:
+                    if potential_fiat in cls.COMMON_FIAT:
                         return {
                             'type': 'crypto',
                             'from': potential_crypto,
                             'to': potential_fiat
                         }
         
-        # Patterns for fiat exchange rates
-        fiat_patterns = [
-            r'\b([a-z]{3})\s+(?:to\s+)?([a-z]{3})\b',  # usd to eur
+        # Patterns for fiat exchange rates with amounts
+        fiat_amount_patterns = [
             r'(\d+(?:\.\d+)?)\s+([a-z]{3})\s+(?:to\s+|in\s+)?([a-z]{3})\b',  # 100 usd to eur
+            r'convert\s+(\d+(?:\.\d+)?)\s+([a-z]{3})\s+(?:to\s+)?([a-z]{3})\b',  # convert 50 cad to aud
         ]
         
-        for pattern in fiat_patterns:
+        for pattern in fiat_amount_patterns:
             match = re.search(pattern, message_lower)
             if match:
-                if len(match.groups()) == 3:  # Amount specified
-                    amount = float(match.group(1))
-                    from_currency = match.group(2).upper()
-                    to_currency = match.group(3).upper()
-                else:
-                    amount = 1
-                    from_currency = match.group(1).upper()
-                    to_currency = match.group(2).upper()
+                amount = float(match.group(1))
+                from_currency = match.group(2).upper()
+                to_currency = match.group(3).upper()
                 
                 # Check if both are fiat currencies
-                if (from_currency in cls.FIAT_SYMBOLS or from_currency in ['USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD']) and \
-                   (to_currency in cls.FIAT_SYMBOLS or to_currency in ['USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD']):
+                if from_currency in cls.COMMON_FIAT and to_currency in cls.COMMON_FIAT:
                     return {
                         'type': 'fiat',
                         'from': from_currency,
                         'to': to_currency,
                         'amount': amount
+                    }
+        
+        # Patterns for fiat exchange rates without amounts
+        fiat_patterns = [
+            r'\b([a-z]{3})\s+(?:to\s+)?([a-z]{3})\b',  # usd to eur
+            r'exchange\s+rate\s+([a-z]{3})\s+(?:to\s+)?([a-z]{3})\b',  # exchange rate usd to nzd
+        ]
+        
+        for pattern in fiat_patterns:
+            match = re.search(pattern, message_lower)
+            if match:
+                from_currency = match.group(1).upper()
+                to_currency = match.group(2).upper() if len(match.groups()) > 1 else match.group(1).upper()
+                
+                # Check if both are fiat currencies
+                if from_currency in cls.COMMON_FIAT and to_currency in cls.COMMON_FIAT:
+                    return {
+                        'type': 'fiat',
+                        'from': from_currency,
+                        'to': to_currency,
+                        'amount': 1
                     }
         
         return None
