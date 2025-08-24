@@ -4,17 +4,17 @@ services:
   traefik:
     image: traefik:v3.0
     container_name: traefik
-    restart: unless-stopped
+    restart: ${RESTART_POLICY:-unless-stopped}
     security_opt:
       - no-new-privileges:true
     command:
       # API and Dashboard
-      - "--api.dashboard=true"
+      - "--api.dashboard=${ENABLE_TRAEFIK_DASHBOARD:-false}"
       - "--api.debug=false"
       # Docker provider
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
-      - "--providers.docker.network=bot-network"
+      - "--providers.docker.network=${DOCKER_NETWORK}"
       # Entrypoints
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
@@ -24,22 +24,18 @@ services:
       - "--entrypoints.web.http.redirections.entrypoint.permanent=true"
       # Let's Encrypt configuration
       - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
-      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"  # Add your email to .env
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
       - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
-      # Uncomment the line below to use Let's Encrypt staging server for testing
-      # - "--certificatesresolvers.letsencrypt.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory"
-      # Security headers
-      - "--entrypoints.websecure.http.middlewares=security-headers@docker"
+      # Conditionally use staging server
+      - "--certificatesresolvers.letsencrypt.acme.caserver=${USE_LETSENCRYPT_STAGING:+https://acme-staging-v02.api.letsencrypt.org/directory}"
       # Logging
-      - "--log.level=INFO"
-      - "--accesslog=true"
+      - "--log.level=${LOG_LEVEL:-INFO}"
+      - "--accesslog=${ENABLE_ACCESS_LOG:-true}"
       - "--accesslog.filepath=/logs/access.log"
       - "--accesslog.bufferingsize=100"
     ports:
       - "80:80"
       - "443:443"
-      # Uncomment to expose dashboard on port 8080 (only for debugging, remove in production)
-      # - "8080:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - traefik-letsencrypt:/letsencrypt
@@ -47,15 +43,14 @@ services:
     networks:
       - bot-network
     labels:
-      # Dashboard configuration (optional - secure it properly)
-      - "traefik.enable=true"
-      - "traefik.http.routers.traefik-dashboard.rule=Host(`traefik.${DOMAIN}`)"  # Add DOMAIN to .env
+      # Dashboard configuration (if enabled)
+      - "traefik.enable=${ENABLE_TRAEFIK_DASHBOARD:-false}"
+      - "traefik.http.routers.traefik-dashboard.rule=Host(`${TRAEFIK_SUBDOMAIN}.${DOMAIN}`)"
       - "traefik.http.routers.traefik-dashboard.entrypoints=websecure"
       - "traefik.http.routers.traefik-dashboard.tls.certresolver=letsencrypt"
       - "traefik.http.routers.traefik-dashboard.service=api@internal"
-      # Basic auth for dashboard (generate password hash with: htpasswd -nb admin your-password)
-      - "traefik.http.routers.traefik-dashboard.middlewares=dashboard-auth"
-      - "traefik.http.middlewares.dashboard-auth.basicauth.users=${TRAEFIK_DASHBOARD_AUTH}"  # Add to .env
+      - "traefik.http.routers.traefik-dashboard.middlewares=dashboard-auth,security-headers@docker"
+      - "traefik.http.middlewares.dashboard-auth.basicauth.users=${TRAEFIK_DASHBOARD_AUTH}"
       # Security headers middleware
       - "traefik.http.middlewares.security-headers.headers.customFrameOptionsValue=SAMEORIGIN"
       - "traefik.http.middlewares.security-headers.headers.contentTypeNosniff=true"
@@ -65,42 +60,53 @@ services:
       - "traefik.http.middlewares.security-headers.headers.stsIncludeSubdomains=true"
       - "traefik.http.middlewares.security-headers.headers.stsPreload=true"
       - "traefik.http.middlewares.security-headers.headers.forceSTSHeader=true"
+      # Rate limiting middleware
+      - "traefik.http.middlewares.rate-limit.ratelimit.average=${RATE_LIMIT_PER_MINUTE:-60}"
+      - "traefik.http.middlewares.rate-limit.ratelimit.burst=100"
 
   nifty-bot:
     build:
       context: ..
       dockerfile: Docker/Dockerfile
     container_name: nifty-bot
-    restart: unless-stopped
+    restart: ${RESTART_POLICY:-unless-stopped}
     env_file:
       - ../.env
+    environment:
+      # Override webhook URL to use Traefik
+      - TWILIO_WEBHOOK_BASE_URL=https://${BOT_SUBDOMAIN}.${DOMAIN}
     volumes:
       # Mount config files if needed
       - ../config:/app/config:ro
       # Persist any data/cache if needed
       - bot-data:/app/data
+      # Backup directory
+      - bot-backups:${BACKUP_DIR:-/backups}
     networks:
       - bot-network
     labels:
-      # Traefik configuration for the bot (if it has a web interface)
-      - "traefik.enable=true"
-      - "traefik.http.routers.nifty-bot.rule=Host(`bot.${DOMAIN}`)"  # Add DOMAIN to .env
+      # Enable Traefik only if Twilio webhooks are enabled
+      - "traefik.enable=${ENABLE_WHATSAPP:-false}"
+      - "traefik.http.routers.nifty-bot.rule=Host(`${BOT_SUBDOMAIN}.${DOMAIN}`)"
       - "traefik.http.routers.nifty-bot.entrypoints=websecure"
       - "traefik.http.routers.nifty-bot.tls.certresolver=letsencrypt"
-      - "traefik.http.services.nifty-bot.loadbalancer.server.port=5000"  # Adjust port if different
-      - "traefik.http.routers.nifty-bot.middlewares=security-headers@docker"
+      - "traefik.http.services.nifty-bot.loadbalancer.server.port=${TWILIO_WEBHOOK_PORT:-5000}"
+      - "traefik.http.routers.nifty-bot.middlewares=security-headers@docker,rate-limit@docker"
+      # IP whitelist if configured
+      - "traefik.http.middlewares.ip-whitelist.ipwhitelist.sourcerange=${IP_WHITELIST:-0.0.0.0/0}"
     logging:
       driver: "json-file"
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: "${LOG_MAX_SIZE:-10m}"
+        max-file: "${LOG_MAX_FILES:-3}"
 
 volumes:
   bot-data:
+  bot-backups:
   traefik-letsencrypt:
   traefik-logs:
 
 networks:
   bot-network:
     driver: bridge
-    name: bot-network
+    name: ${DOCKER_NETWORK:-bot-network}
