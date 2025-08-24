@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  nifty-bot:
+    build:
+      context: ..
+      dockerfile: Docker/Dockerfile
+    container_name: nifty-bot
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    volumes:
+      # Mount config files if needed
+      - ../config:/app/config:ro
+      # Persist any data/cache if needed
+      - bot-data:/app/data
+    networks:
+      - bot-network
+    # Uncomment if using Twilio webhooks
+    # ports:
+    #   - "5000:5000"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  bot-data:
+
+networks:
+  bot-network:
+    driver: bridge
