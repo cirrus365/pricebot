@@ -1,6 +1,71 @@
 version: '3.8'
 
 services:
+  traefik:
+    image: traefik:v3.0
+    container_name: traefik
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command:
+      # API and Dashboard
+      - "--api.dashboard=true"
+      - "--api.debug=false"
+      # Docker provider
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=bot-network"
+      # Entrypoints
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      # HTTP to HTTPS redirect
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--entrypoints.web.http.redirections.entrypoint.permanent=true"
+      # Let's Encrypt configuration
+      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"  # Add your email to .env
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      # Uncomment the line below to use Let's Encrypt staging server for testing
+      # - "--certificatesresolvers.letsencrypt.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory"
+      # Security headers
+      - "--entrypoints.websecure.http.middlewares=security-headers@docker"
+      # Logging
+      - "--log.level=INFO"
+      - "--accesslog=true"
+      - "--accesslog.filepath=/logs/access.log"
+      - "--accesslog.bufferingsize=100"
+    ports:
+      - "80:80"
+      - "443:443"
+      # Uncomment to expose dashboard on port 8080 (only for debugging, remove in production)
+      # - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-letsencrypt:/letsencrypt
+      - traefik-logs:/logs
+    networks:
+      - bot-network
+    labels:
+      # Dashboard configuration (optional - secure it properly)
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik-dashboard.rule=Host(`traefik.${DOMAIN}`)"  # Add DOMAIN to .env
+      - "traefik.http.routers.traefik-dashboard.entrypoints=websecure"
+      - "traefik.http.routers.traefik-dashboard.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.traefik-dashboard.service=api@internal"
+      # Basic auth for dashboard (generate password hash with: htpasswd -nb admin your-password)
+      - "traefik.http.routers.traefik-dashboard.middlewares=dashboard-auth"
+      - "traefik.http.middlewares.dashboard-auth.basicauth.users=${TRAEFIK_DASHBOARD_AUTH}"  # Add to .env
+      # Security headers middleware
+      - "traefik.http.middlewares.security-headers.headers.customFrameOptionsValue=SAMEORIGIN"
+      - "traefik.http.middlewares.security-headers.headers.contentTypeNosniff=true"
+      - "traefik.http.middlewares.security-headers.headers.browserXssFilter=true"
+      - "traefik.http.middlewares.security-headers.headers.referrerPolicy=strict-origin-when-cross-origin"
+      - "traefik.http.middlewares.security-headers.headers.stsSeconds=31536000"
+      - "traefik.http.middlewares.security-headers.headers.stsIncludeSubdomains=true"
+      - "traefik.http.middlewares.security-headers.headers.stsPreload=true"
+      - "traefik.http.middlewares.security-headers.headers.forceSTSHeader=true"
+
   nifty-bot:
     build:
       context: ..
@@ -16,9 +81,14 @@ services:
       - bot-data:/app/data
     networks:
       - bot-network
-    # Uncomment if using Twilio webhooks
-    # ports:
-    #   - "5000:5000"
+    labels:
+      # Traefik configuration for the bot (if it has a web interface)
+      - "traefik.enable=true"
+      - "traefik.http.routers.nifty-bot.rule=Host(`bot.${DOMAIN}`)"  # Add DOMAIN to .env
+      - "traefik.http.routers.nifty-bot.entrypoints=websecure"
+      - "traefik.http.routers.nifty-bot.tls.certresolver=letsencrypt"
+      - "traefik.http.services.nifty-bot.loadbalancer.server.port=5000"  # Adjust port if different
+      - "traefik.http.routers.nifty-bot.middlewares=security-headers@docker"
     logging:
       driver: "json-file"
       options:
@@ -27,7 +97,10 @@ services:
 
 volumes:
   bot-data:
+  traefik-letsencrypt:
+  traefik-logs:
 
 networks:
   bot-network:
     driver: bridge
+    name: bot-network
