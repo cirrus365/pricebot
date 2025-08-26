@@ -7,11 +7,12 @@ from typing import Optional
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 from telegram.constants import ParseMode, ChatAction
-from config.settings import TELEGRAM_BOT_TOKEN, TELEGRAM_ALLOWED_USERS, TELEGRAM_ALLOWED_GROUPS, BOT_USERNAME
+from config.settings import TELEGRAM_BOT_TOKEN, TELEGRAM_ALLOWED_USERS, TELEGRAM_ALLOWED_GROUPS, BOT_USERNAME, ENABLE_MEME_GENERATION
 from config.personality import BOT_PERSONALITY
 from modules.llm import get_llm_reply
 from modules.price_tracker import price_tracker
 from modules.web_search import search_with_jina, fetch_url_content
+from modules.meme_generator import meme_generator
 from utils.formatting import format_code_blocks
 from utils.helpers import extract_urls_from_message, detect_code_in_message
 
@@ -81,10 +82,17 @@ class TelegramBot:
             "💬 Just chat with me normally\n"
             "💰 /price <crypto> - Get crypto prices\n"
             "🔍 /search <query> - Search the web\n"
+        )
+        
+        if ENABLE_MEME_GENERATION:
+            welcome_message += "🎨 /meme <topic> - Generate memes with AI\n"
+            
+        welcome_message += (
             "📊 /stats - Bot statistics\n"
             "❓ /help - Show all commands\n\n"
             "Let's get started! Ask me anything! 🚀"
         )
+        
         await update.message.reply_text(welcome_message)
         
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -101,6 +109,15 @@ class TelegramBot:
             "*Crypto Commands:*\n"
             "💰 /price <crypto> - Get cryptocurrency price\n"
             "/xmr - Quick Monero price check\n\n"
+        )
+        
+        if ENABLE_MEME_GENERATION:
+            help_text += (
+                "*Meme Generation:*\n"
+                "🎨 /meme <topic> - Generate a meme with AI captions\n\n"
+            )
+            
+        help_text += (
             "*Search & Info:*\n"
             "🔍 /search <query> - Search the web\n"
             "📊 /stats - Bot statistics\n"
@@ -109,7 +126,49 @@ class TelegramBot:
             "❓ /help - Show this message\n"
             "👋 /start - Welcome message"
         )
+        
         await update.message.reply_text(help_text, parse_mode=ParseMode.MARKDOWN)
+        
+    async def meme_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /meme command"""
+        if not self.is_authorized(update):
+            await update.message.reply_text("❌ Sorry, you're not authorized to use this bot.")
+            return
+            
+        if not ENABLE_MEME_GENERATION:
+            await update.message.reply_text("Meme generation is currently disabled.")
+            return
+            
+        if not context.args:
+            await update.message.reply_text("Please provide a topic for the meme. Usage: `/meme <topic>`", parse_mode=ParseMode.MARKDOWN)
+            return
+            
+        # Send typing indicator
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+        
+        topic = " ".join(context.args)
+        
+        # Generate the meme
+        meme_url, caption = await meme_generator.handle_meme_command(f"!meme {topic}")
+        
+        if meme_url:
+            # Send the meme as a photo with caption
+            try:
+                await context.bot.send_photo(
+                    chat_id=update.effective_chat.id,
+                    photo=meme_url,
+                    caption=f"🎨 {caption}\n\n_Topic: {topic}_",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+            except Exception as e:
+                # Fallback to sending URL if photo fails
+                logger.error(f"Failed to send photo: {e}")
+                await update.message.reply_text(
+                    f"🎨 {caption}\n\n[View Meme]({meme_url})\n\n_Topic: {topic}_",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+        else:
+            await update.message.reply_text(caption or "Failed to generate meme. Please try again.")
         
     async def price_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /price command"""
@@ -287,6 +346,9 @@ async def run_telegram_bot():
         application.add_handler(CommandHandler("ping", bot.ping_command))
         application.add_handler(CommandHandler("reset", bot.reset_command))
         
+        if ENABLE_MEME_GENERATION:
+            application.add_handler(CommandHandler("meme", bot.meme_command))
+        
         # Add message handler for regular messages
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_message))
         
@@ -301,6 +363,8 @@ async def run_telegram_bot():
         print("📝 Commands: /help to see all commands")
         print("💬 Chat: Just send a message to chat")
         print("💰 Price tracking: /price <crypto> or /xmr")
+        if ENABLE_MEME_GENERATION:
+            print("🎨 Meme generation: /meme <topic> to create memes")
         print("🔍 Web search: /search <query>")
         print("📊 Stats: /stats for bot statistics")
         if TELEGRAM_ALLOWED_USERS:

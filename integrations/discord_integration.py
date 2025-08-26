@@ -6,11 +6,12 @@ from discord.ext import commands
 import asyncio
 from typing import Optional
 import logging
-from config.settings import DISCORD_TOKEN, DISCORD_COMMAND_PREFIX, DISCORD_ALLOWED_GUILDS, BOT_USERNAME
+from config.settings import DISCORD_TOKEN, DISCORD_COMMAND_PREFIX, DISCORD_ALLOWED_GUILDS, BOT_USERNAME, ENABLE_MEME_GENERATION
 from config.personality import BOT_PERSONALITY
 from modules.llm import get_llm_reply
 from modules.price_tracker import price_tracker
 from modules.web_search import search_with_jina, fetch_url_content
+from modules.meme_generator import meme_generator
 from utils.formatting import format_code_blocks
 from utils.helpers import extract_urls_from_message, detect_code_in_message
 
@@ -185,6 +186,13 @@ class NiftyCommands(commands.Cog):
             inline=False
         )
         
+        if ENABLE_MEME_GENERATION:
+            embed.add_field(
+                name="🎨 Meme Generation",
+                value="`!meme <topic>` - Generate a meme with AI captions",
+                inline=False
+            )
+        
         embed.add_field(
             name="🔍 Search",
             value="Ask me to search for anything!",
@@ -199,6 +207,34 @@ class NiftyCommands(commands.Cog):
         
         embed.set_footer(text=f"Made with 💜 by the {BOT_USERNAME.capitalize()} team")
         await ctx.send(embed=embed)
+        
+    @commands.command(name='meme', help='Generate a meme with AI captions')
+    async def meme_command(self, ctx, *, topic: str = None):
+        """Generate a meme based on user input"""
+        if not ENABLE_MEME_GENERATION:
+            await ctx.send("Meme generation is currently disabled.")
+            return
+            
+        if not topic:
+            await ctx.send("Please provide a topic for the meme. Usage: `!meme <topic>`")
+            return
+            
+        async with ctx.typing():
+            # Generate the meme
+            meme_url, caption = await meme_generator.handle_meme_command(f"!meme {topic}")
+            
+            if meme_url:
+                # Create embed with meme
+                embed = discord.Embed(
+                    title="🎨 Generated Meme",
+                    description=caption,
+                    color=discord.Color.green()
+                )
+                embed.set_image(url=meme_url)
+                embed.set_footer(text=f"Topic: {topic}")
+                await ctx.send(embed=embed)
+            else:
+                await ctx.send(caption or "Failed to generate meme. Please try again.")
         
     @commands.command(name='price', help='Get cryptocurrency prices')
     async def price_command(self, ctx, *, crypto: str = "XMR"):
@@ -278,6 +314,8 @@ async def run_discord_bot():
     print("📝 Commands: Use ! prefix (e.g., !help)")
     print("💬 Chat: Mention the bot or reply to its messages")
     print("💰 Price tracking: !price <crypto> or !xmr")
+    if ENABLE_MEME_GENERATION:
+        print("🎨 Meme generation: !meme <topic> to create memes")
     print("🔍 Web search: Ask to search for anything")
     print("📊 Stats: !stats for bot statistics")
     print("=" * 50)

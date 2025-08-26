@@ -72,6 +72,11 @@ OLLAMA_REPEAT_PENALTY = float(os.getenv("OLLAMA_REPEAT_PENALTY", "1.1"))  # Pena
 # Jina.ai config - no defaults for API keys
 JINA_API_KEY = os.getenv("JINA_API_KEY")
 
+# Imgflip config for meme generation - no defaults for credentials
+IMGFLIP_USERNAME = os.getenv("IMGFLIP_USERNAME")
+IMGFLIP_PASSWORD = os.getenv("IMGFLIP_PASSWORD")
+ENABLE_MEME_GENERATION = os.getenv("ENABLE_MEME_GENERATION", "true").lower() == "true"
+
 # Bot filter - prevent triggering other bots
 FILTERED_WORDS = os.getenv("FILTERED_WORDS", "").split(",") if os.getenv("FILTERED_WORDS") else []
 

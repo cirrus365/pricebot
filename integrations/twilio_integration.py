@@ -16,11 +16,12 @@ from config.settings import (
     TWILIO_MESSENGER_PAGE_ID, TWILIO_INSTAGRAM_ACCOUNT_ID,
     TWILIO_WEBHOOK_BASE_URL, TWILIO_WEBHOOK_PORT,
     WHATSAPP_ALLOWED_NUMBERS, MESSENGER_ALLOWED_USERS, INSTAGRAM_ALLOWED_USERS,
-    INTEGRATIONS, MAX_ROOM_HISTORY, ENABLE_PRICE_TRACKING
+    INTEGRATIONS, MAX_ROOM_HISTORY, ENABLE_PRICE_TRACKING, ENABLE_MEME_GENERATION
 )
 from modules.llm import get_llm_reply
 from modules.price_tracker import price_tracker
 from modules.web_search import search_with_jina, needs_web_search
+from modules.meme_generator import meme_generator
 from utils.helpers import extract_urls_from_message, detect_code_in_message
 
 logger = logging.getLogger(__name__)
@@ -185,7 +186,16 @@ class TwilioBot:
         self.store_message(sender_id, sender_id, message, platform)
         
         try:
-            # Check for commands
+            # Check for meme command
+            if message.startswith('!meme ') and ENABLE_MEME_GENERATION:
+                meme_url, caption = await meme_generator.handle_meme_command(message)
+                if meme_url:
+                    # For platforms that support images, return URL with caption
+                    return f"{caption}\n\nView meme: {meme_url}"
+                else:
+                    return caption or "Failed to generate meme."
+            
+            # Check for other commands
             if message.startswith('/'):
                 return await self.handle_command(message, sender_id, platform)
             
@@ -251,6 +261,9 @@ class TwilioBot:
         
         if ENABLE_PRICE_TRACKING:
             base_help += "/price [crypto] - Get cryptocurrency price (default: XMR)\n"
+        
+        if ENABLE_MEME_GENERATION:
+            base_help += "!meme <topic> - Generate a meme with AI captions\n"
         
         base_help += "\nJust send me a message to chat!"
         
@@ -328,6 +341,9 @@ async def run_twilio_bot():
         logger.info(f"  Messenger: {TWILIO_WEBHOOK_BASE_URL}/messenger")
     if instagram_enabled:
         logger.info(f"  Instagram: {TWILIO_WEBHOOK_BASE_URL}/instagram")
+    
+    if ENABLE_MEME_GENERATION:
+        logger.info("  Meme generation: !meme <topic> command enabled")
     
     # Create and run the bot
     bot = TwilioBot()

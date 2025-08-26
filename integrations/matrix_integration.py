@@ -4,10 +4,11 @@ Matrix integration for Nifty Bot
 import asyncio
 import logging
 from nio import AsyncClient, LoginResponse, RoomMessageText, InviteMemberEvent
-from config.settings import HOMESERVER, USERNAME, PASSWORD, BOT_USERNAME
+from config.settings import HOMESERVER, USERNAME, PASSWORD, BOT_USERNAME, ENABLE_MEME_GENERATION
 from modules.message_handler import message_callback
 from modules.invite_handler import invite_callback, joined_rooms
 from modules.cleanup import cleanup_old_context
+from modules.meme_generator import meme_generator
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,11 @@ async def run_matrix_bot():
         
         # Create wrapped callbacks that include the client
         async def wrapped_message_callback(room, event):
-            await message_callback(client, room, event)
+            # Check if it's a meme command
+            if event.body.startswith('!meme ') and ENABLE_MEME_GENERATION:
+                await handle_meme_command(client, room, event)
+            else:
+                await message_callback(client, room, event)
         
         async def wrapped_invite_callback(room, event):
             await invite_callback(client, room, event)
@@ -74,6 +79,8 @@ async def run_matrix_bot():
         print("👀 Emoji reactions: ENABLED (various triggers)")
         print(f"🧹 Reset: '{BOT_USERNAME} !reset' to clear context")
         print(f"📊 Summary: '{BOT_USERNAME} summary' for comprehensive chat analysis")
+        if ENABLE_MEME_GENERATION:
+            print("🎨 Meme generation: !meme <topic> to create memes")
         print("🧠 Optimized Context: Tracking 100 messages (reduced for performance)")
         print("📈 Context Features: Topic tracking, user expertise, important messages")
         print("💻 Technical expertise: Programming, Linux, Security, etc.")
@@ -95,3 +102,61 @@ async def run_matrix_bot():
         raise
     finally:
         await client.close()
+
+async def handle_meme_command(client, room, event):
+    """Handle meme generation command for Matrix"""
+    try:
+        # Send typing indicator
+        await client.room_typing(room.room_id, typing_state=True)
+        
+        # Generate meme
+        meme_url, caption = await meme_generator.handle_meme_command(event.body)
+        
+        if meme_url:
+            # Send the meme as an image with caption
+            content = {
+                "body": caption,
+                "msgtype": "m.image",
+                "url": meme_url,
+                "info": {
+                    "mimetype": "image/jpeg"
+                }
+            }
+            
+            # For Matrix, we need to upload the image first or use the direct URL
+            # Since Imgflip provides a direct URL, we can use it
+            formatted_body = f"{caption}\n{meme_url}"
+            
+            await client.room_send(
+                room_id=room.room_id,
+                message_type="m.room.message",
+                content={
+                    "msgtype": "m.text",
+                    "body": formatted_body,
+                    "format": "org.matrix.custom.html",
+                    "formatted_body": f'<p>{caption}</p><img src="{meme_url}" alt="meme"/>'
+                }
+            )
+        else:
+            # Send error message
+            await client.room_send(
+                room_id=room.room_id,
+                message_type="m.room.message",
+                content={
+                    "msgtype": "m.text",
+                    "body": caption or "Failed to generate meme"
+                }
+            )
+            
+    except Exception as e:
+        logger.error(f"Error handling meme command: {e}")
+        await client.room_send(
+            room_id=room.room_id,
+            message_type="m.room.message",
+            content={
+                "msgtype": "m.text",
+                "body": "Sorry, I couldn't create a meme right now. Please try again later."
+            }
+        )
+    finally:
+        await client.room_typing(room.room_id, typing_state=False)
