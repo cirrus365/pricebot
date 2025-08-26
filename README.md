@@ -1,6 +1,6 @@
 # Nifty - Multi-Platform AI Chatbot with Internet Search
 
-A feature-rich, multi-platform chatbot powered by DeepSeek AI with internet search capabilities for augmented responses. Nifty works across Matrix, Discord, Telegram, WhatsApp, Instagram, and Facebook Messenger platforms, providing intelligent conversations, real-time web search, and cryptocurrency price tracking.
+A feature-rich, multi-platform chatbot powered by AI with internet search capabilities for augmented responses. Nifty works across Matrix, Discord, Telegram, WhatsApp, Instagram, and Facebook Messenger platforms, providing intelligent conversations, real-time web search, cryptocurrency price tracking, and meme generation.
 
 ## 🚀 Supported Platforms
 
@@ -13,9 +13,10 @@ A feature-rich, multi-platform chatbot powered by DeepSeek AI with internet sear
 
 ## Features
 
-- **🤖 AI-Powered Conversations** - Uses DeepSeek AI for intelligent, context-aware responses
+- **🤖 AI-Powered Conversations** - Uses DeepSeek AI or Ollama for intelligent, context-aware responses
 - **🔍 Internet Search Integration** - Automatically searches the web for current information using Jina.ai
 - **🔗 URL Content Analysis** - Reads and analyzes content from shared URLs
+- **🎨 Meme Generation** - Create custom memes with AI-generated captions
 - **💬 Context-Aware Responses** - Tracks conversation history and adapts responses accordingly
 - **📊 Chat Analytics** - Provides comprehensive chat summaries and activity analysis
 - **💻 Code Formatting** - Proper syntax highlighting for multiple programming languages
@@ -35,6 +36,7 @@ A feature-rich, multi-platform chatbot powered by DeepSeek AI with internet sear
 - Room-based conversation history
 - Automatic URL content fetching
 - Comprehensive chat summaries
+- Meme generation with `!meme` command
 
 ### Discord
 - Slash commands support
@@ -42,29 +44,62 @@ A feature-rich, multi-platform chatbot powered by DeepSeek AI with internet sear
 - Built-in help command system
 - Mention-based interactions
 - Per-channel conversation tracking
-- Commands: `/help`, `/price`, `/xmr`, `/stats`, `/ping`
+- Rich embeds for memes
+- Commands: `/help`, `/price`, `/xmr`, `/stats`, `/ping`, `!meme`
 
 ### Telegram
 - Command-based interactions
 - User and group authorization
-- Inline keyboard support (planned)
-- Commands: `/start`, `/help`, `/price`, `/xmr`, `/search`, `/stats`, `/ping`, `/reset`
+- Photo message support for memes
+- Commands: `/start`, `/help`, `/price`, `/xmr`, `/search`, `/stats`, `/ping`, `/reset`, `/meme`
 
 ### WhatsApp (via Twilio)
 - Business messaging support
 - Natural language interactions
 - Media message support
 - Command support with `!` prefix
+- Meme generation with URL links
 
 ### Instagram (via Twilio)
 - Direct message support
 - Natural conversation without commands
 - Media support for images
+- Meme generation support
 
 ### Facebook Messenger (via Twilio)
 - Page messaging support
 - Natural language interactions
 - Quick reply support
+- Meme generation capability
+
+## 🎨 Meme Generation Feature
+
+Generate custom memes with AI-powered captions using the `!meme` command (or `/meme` on Telegram).
+
+### Quick Examples
+```
+!meme when the code finally works
+!meme debugging at 3am
+!meme merge conflicts
+!meme explaining recursion to beginners
+```
+
+### Features
+- **20+ Popular Templates**: Drake, Distracted Boyfriend, Expanding Brain, and more
+- **Smart Template Selection**: Automatically picks the best template based on your topic
+- **AI-Generated Captions**: Uses your configured LLM for witty, contextually relevant text
+- **Multi-Platform Support**: Works on all supported platforms with appropriate formatting
+
+### Setup
+1. Sign up for a free account at [imgflip.com](https://imgflip.com/signup)
+2. Add credentials to your `.env` file:
+```env
+IMGFLIP_USERNAME=your_username
+IMGFLIP_PASSWORD=your_password
+ENABLE_MEME_GENERATION=true
+```
+
+[Full Meme Generator Documentation](docs/MEME_GENERATOR.md)
 
 ## Price Tracking Features
 
@@ -97,8 +132,9 @@ Nifty automatically detects price-related queries and provides:
 
 - Python 3.8 or higher
 - API Keys:
-  - OpenRouter API key (for DeepSeek AI)
+  - OpenRouter API key (for DeepSeek AI) OR Ollama running locally
   - Jina.ai API key (for web search)
+  - Imgflip account (for meme generation)
 - Platform-specific requirements:
   - **Matrix**: Matrix account
   - **Discord**: Discord bot token and application
@@ -124,16 +160,23 @@ pip install asyncio aiohttp matrix-nio discord.py python-telegram-bot python-dot
 Create a `.env` file based on `.env.example` with the following variables:
 
 ### Core Settings
-- `OPENROUTER_API_KEY` - Your OpenRouter API key
+- `BOT_USERNAME` - Your bot's name (default: `nifty`)
+- `LLM_PROVIDER` - Choose `openrouter` or `ollama`
+- `OPENROUTER_API_KEY` - Your OpenRouter API key (if using OpenRouter)
 - `JINA_API_KEY` - Your Jina.ai API key for web search
 - `ENABLE_PRICE_TRACKING` - Toggle price tracking feature (default: `true`)
+- `ENABLE_MEME_GENERATION` - Toggle meme generation feature (default: `true`)
+- `IMGFLIP_USERNAME` - Your Imgflip username (for meme generation)
+- `IMGFLIP_PASSWORD` - Your Imgflip password (for meme generation)
 - `PRICE_CACHE_TTL` - Cache duration for price data in seconds (default: `300`)
 
 ### Platform Toggles
 - `ENABLE_MATRIX` - Enable Matrix integration (default: `true`)
 - `ENABLE_DISCORD` - Enable Discord integration (default: `false`)
 - `ENABLE_TELEGRAM` - Enable Telegram integration (default: `false`)
-- `ENABLE_TWILIO` - Enable Twilio integrations (WhatsApp/Instagram/Messenger) (default: `false`)
+- `ENABLE_WHATSAPP` - Enable WhatsApp integration (default: `false`)
+- `ENABLE_MESSENGER` - Enable Messenger integration (default: `false`)
+- `ENABLE_INSTAGRAM` - Enable Instagram integration (default: `false`)
 
 ### Matrix Configuration
 - `MATRIX_HOMESERVER` - Your Matrix homeserver URL (e.g., `"https://matrix.org"`)
@@ -154,9 +197,17 @@ Create a `.env` file based on `.env.example` with the following variables:
 - `TWILIO_ACCOUNT_SID` - Your Twilio Account SID
 - `TWILIO_AUTH_TOKEN` - Your Twilio Auth Token
 - `TWILIO_WHATSAPP_NUMBER` - Your Twilio WhatsApp number (e.g., `"whatsapp:+14155238886"`)
-- `TWILIO_SMS_NUMBER` - Your Twilio SMS number for Instagram/Messenger (e.g., `"+14155238886"`)
-- `TWILIO_WEBHOOK_URL` - Your public webhook URL (e.g., `"https://your-domain.com/twilio/webhook"`)
-- `TWILIO_PORT` - Port for Twilio webhook server (default: `5000`)
+- `TWILIO_MESSENGER_PAGE_ID` - Your Facebook Page ID for Messenger
+- `TWILIO_INSTAGRAM_ACCOUNT_ID` - Your Instagram Account ID
+- `TWILIO_WEBHOOK_BASE_URL` - Your public webhook URL (e.g., `"https://your-domain.com"`)
+- `TWILIO_WEBHOOK_PORT` - Port for Twilio webhook server (default: `5000`)
+
+### Ollama Configuration (if using Ollama)
+- `OLLAMA_URL` - Ollama server URL (default: `http://localhost:11434`)
+- `OLLAMA_MODEL` - Model to use (e.g., `llama2`, `mistral`, `codellama`)
+- `OLLAMA_KEEP_ALIVE` - How long to keep model loaded (default: `5m`)
+- `OLLAMA_NUM_PREDICT` - Max tokens to generate (default: `1000`)
+- `OLLAMA_TEMPERATURE` - Temperature for generation (default: `0.8`)
 
 ### Additional Settings
 - `FILTERED_WORDS` - Comma-separated list of words to filter
@@ -169,10 +220,17 @@ Create a `.env` file based on `.env.example` with the following variables:
 ### From Terminal
 
 ```bash
-python nifty.py
+python bot.py
 ```
 
 The bot will automatically start the enabled integrations based on your `.env` configuration.
+
+### Using Docker
+
+```bash
+docker build -t nifty-bot .
+docker run --env-file .env nifty-bot
+```
 
 ### Using systemd Service
 
@@ -194,7 +252,7 @@ Type=simple
 User=your-username
 WorkingDirectory=/path/to/bot/directory
 Environment="PATH=/usr/bin:/usr/local/bin"
-ExecStart=/usr/bin/python3 /path/to/bot/directory/nifty.py
+ExecStart=/usr/bin/python3 /path/to/bot/directory/bot.py
 Restart=always
 RestartSec=10
 
@@ -234,6 +292,7 @@ sudo journalctl -u nifty-bot.service -f
   - `nifty [your question]` - Ask anything!
   - `nifty btc price` - Get Bitcoin price
   - `nifty convert 100 usd to eur` - Currency conversion
+  - `!meme <topic>` - Generate a meme
 
 ### Discord Usage
 
@@ -242,6 +301,7 @@ sudo journalctl -u nifty-bot.service -f
   - `!help` - Show available commands
   - `!price [crypto]` - Get cryptocurrency price
   - `!xmr` - Get Monero price
+  - `!meme <topic>` - Generate a meme
   - `!stats` - Show bot statistics
   - `!ping` - Check bot latency
 
@@ -254,6 +314,7 @@ sudo journalctl -u nifty-bot.service -f
   - `/help` - Show available commands
   - `/price [crypto]` - Get cryptocurrency price
   - `/xmr` - Get Monero price
+  - `/meme <topic>` - Generate a meme
   - `/search [query]` - Search the web
   - `/stats` - Show bot statistics
   - `/ping` - Check bot responsiveness
@@ -266,6 +327,7 @@ sudo journalctl -u nifty-bot.service -f
 - **Commands** (optional):
   - `!help` - Show available commands
   - `!price [crypto]` - Get cryptocurrency price
+  - `!meme <topic>` - Generate a meme
   - `!search [query]` - Search the web
   - `!reset` - Reset conversation context
 
@@ -273,13 +335,13 @@ sudo journalctl -u nifty-bot.service -f
 
 - **Direct Messages**: Send a DM to your connected Instagram account
 - **Natural language**: No commands needed, just chat naturally
-- **Features**: AI responses, web search, URL analysis, price tracking
+- **Features**: AI responses, web search, URL analysis, price tracking, meme generation
 
 ### Facebook Messenger Usage
 
 - **Message your Page**: Send messages to your connected Facebook Page
 - **Natural conversation**: Chat naturally without specific commands
-- **Features**: Contextual AI responses, web search, link analysis, price info
+- **Features**: Contextual AI responses, web search, link analysis, price info, meme creation
 
 ### Features in Action
 
@@ -288,6 +350,7 @@ sudo journalctl -u nifty-bot.service -f
 - **Code Help**: Get programming assistance with syntax-highlighted code
 - **Chat Summary**: Request summaries of recent conversations
 - **Price Tracking**: Get real-time crypto prices and fiat exchange rates
+- **Meme Generation**: Create custom memes with AI-generated captions
 
 ## Setting Up Platform Bots
 
@@ -320,7 +383,7 @@ sudo journalctl -u nifty-bot.service -f
 1. **Sandbox (Development)**:
    - Go to [Twilio Console](https://console.twilio.com) > Messaging > Try it out > Send a WhatsApp message
    - Join the sandbox by sending the join code to the Twilio WhatsApp number
-   - In WhatsApp sandbox settings, set webhook URL to: `https://your-domain.com/twilio/webhook`
+   - In WhatsApp sandbox settings, set webhook URL to: `https://your-domain.com/whatsapp`
 
 2. **Production**:
    - Apply for WhatsApp Business API account through Twilio
@@ -331,14 +394,14 @@ sudo journalctl -u nifty-bot.service -f
 1. Connect your Instagram Professional account to Facebook Business Manager
 2. In [Twilio Console](https://console.twilio.com) > Messaging > Try it out > Instagram
 3. Follow the setup wizard to connect your Instagram account
-4. Configure webhook URL: `https://your-domain.com/twilio/webhook`
+4. Configure webhook URL: `https://your-domain.com/instagram`
 5. Grant necessary permissions for messaging
 
 #### Facebook Messenger Setup
 1. Create a Facebook Page for your business
 2. In [Twilio Console](https://console.twilio.com) > Messaging > Try it out > Facebook Messenger
 3. Connect your Facebook Page to Twilio
-4. Configure webhook URL: `https://your-domain.com/twilio/webhook`
+4. Configure webhook URL: `https://your-domain.com/messenger`
 5. Subscribe to messaging events
 
 #### Testing with ngrok (Development)
@@ -350,21 +413,21 @@ brew install ngrok  # macOS
 # or download from https://ngrok.com/download
 
 # Start your bot
-python nifty.py
+python bot.py
 
 # In another terminal, create tunnel
 ngrok http 5000
 
 # Copy the HTTPS URL (e.g., https://abc123.ngrok.io)
-# Update TWILIO_WEBHOOK_URL in .env:
-# TWILIO_WEBHOOK_URL=https://abc123.ngrok.io/twilio/webhook
+# Update TWILIO_WEBHOOK_BASE_URL in .env:
+# TWILIO_WEBHOOK_BASE_URL=https://abc123.ngrok.io
 ```
 
 #### Production Deployment
 For production, deploy your bot to a cloud service with HTTPS:
 - AWS EC2, Google Cloud, DigitalOcean, etc.
 - Ensure your server has a valid SSL certificate
-- Update `TWILIO_WEBHOOK_URL` with your production URL
+- Update `TWILIO_WEBHOOK_BASE_URL` with your production URL
 
 ## Dependencies
 
@@ -392,7 +455,9 @@ Additional utilities:
 ## API Services
 
 - **OpenRouter**: Provides access to DeepSeek AI model for conversation ([openrouter.ai](https://openrouter.ai/docs))
+- **Ollama**: Local LLM server for privacy-focused deployments ([ollama.ai](https://ollama.ai))
 - **Jina.ai**: Powers web search and URL content extraction capabilities ([jina.ai](https://jina.ai/))
+- **Imgflip**: Meme generation API for creating custom memes ([imgflip.com/api](https://imgflip.com/api))
 - **CoinGecko API**: Free cryptocurrency price data (no API key required)
 - **ExchangeRate-API**: Free tier fiat currency exchange rates (no API key required)
 - **Twilio**: Provides WhatsApp, Instagram, and Facebook Messenger messaging capabilities ([twilio.com](https://www.twilio.com))
@@ -413,10 +478,76 @@ Nifty is designed with privacy in mind:
 
 **Note**: Matrix bot currently does not support end-to-end encrypted rooms out of the box. To enable E2EE support, you would need to install additional dependencies and configure the [matrix-nio](https://github.com/matrix-nio/matrix-nio) E2EE plugin.
 
+## Documentation
+
+- [Meme Generator Documentation](docs/MEME_GENERATOR.md) - Complete guide to meme generation feature
+- [Quick Start Guide](README_MEME_FEATURE.md) - Quick setup for meme generation
+
 ## Contributing
 
 Feel free to submit issues, fork the repository, and create pull requests for any improvements.
 
+### Adding New Features
+
+1. Create a module in `modules/`
+2. Add configuration to `config/settings.py`
+3. Integrate with platforms in `integrations/`
+4. Update documentation
+
+### Adding New Meme Templates
+
+See the [Meme Generator Documentation](docs/MEME_GENERATOR.md#contributing) for instructions on adding new meme templates.
+
+## Troubleshooting
+
+### Common Issues
+
+| Issue | Solution |
+|-------|----------|
+| Bot not responding | Check credentials and permissions |
+| LLM timeout | Increase `LLM_TIMEOUT` in `.env` |
+| Meme generation fails | Verify Imgflip credentials are correct |
+| Web search not working | Check Jina API key |
+| Platform connection failed | Verify platform-specific credentials |
+| "Meme generation is not configured" | Add `IMGFLIP_USERNAME` and `IMGFLIP_PASSWORD` to `.env` |
+| Poor quality meme captions | Ensure LLM is properly configured |
+
+### Debug Mode
+
+Enable debug logging:
+```python
+# In bot.py
+logging.basicConfig(level=logging.DEBUG)
+```
+
 ## License
 
 This project is open-source. Please check the repository for license details.
+
+## Support
+
+- 📖 [Full Documentation](docs/)
+- 🎨 [Meme Generator Guide](docs/MEME_GENERATOR.md)
+- 🐛 [Issue Tracker](https://github.com/yourusername/nifty-bot/issues)
+- 💬 [Discussions](https://github.com/yourusername/nifty-bot/discussions)
+
+## Acknowledgments
+
+- OpenRouter/Ollama for LLM capabilities
+- Jina.ai for web search functionality
+- Imgflip for meme generation API
+- All platform APIs and libraries
+- The open-source community
+
+## Roadmap
+
+- [ ] Voice message support
+- [ ] Image recognition and analysis
+- [ ] Multi-language support
+- [ ] Plugin system for extensibility
+- [ ] Web dashboard for management
+- [ ] Advanced meme templates and customization
+- [ ] GIF meme support
+- [ ] Custom training for specialized domains
+- [ ] Advanced webhook support
+- [ ] Meme voting and favorites system
