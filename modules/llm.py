@@ -4,9 +4,11 @@ import aiohttp
 import re
 from datetime import datetime
 from config.settings import (
-    OPENROUTER_API_KEY, OPENROUTER_URL, OPENROUTER_MODEL, LLM_TIMEOUT,
-    MAX_RETRIES, BASE_RETRY_DELAY, MAX_CONTEXT_LOOKBACK, FILTERED_WORDS,
-    ENABLE_PRICE_TRACKING
+    LLM_PROVIDER, OPENROUTER_API_KEY, OPENROUTER_URL, OPENROUTER_MODEL,
+    OLLAMA_URL, OLLAMA_MODEL, OLLAMA_KEEP_ALIVE, OLLAMA_NUM_PREDICT,
+    OLLAMA_TEMPERATURE, OLLAMA_TOP_K, OLLAMA_TOP_P, OLLAMA_REPEAT_PENALTY,
+    LLM_TIMEOUT, MAX_RETRIES, BASE_RETRY_DELAY, MAX_CONTEXT_LOOKBACK,
+    FILTERED_WORDS, ENABLE_PRICE_TRACKING
 )
 from config.personality import BOT_PERSONALITY
 from utils.helpers import filter_bot_triggers, get_display_name, detect_code_in_message
@@ -36,6 +38,94 @@ async def get_llm_reply_with_retry(prompt, context=None, previous_message=None, 
             delay = BASE_RETRY_DELAY * (2 ** attempt)
             print(f"[RETRY] Attempt {attempt + 1} failed, retrying in {delay}s...")
             await asyncio.sleep(delay)
+
+async def call_ollama_api(messages, temperature=0.8):
+    """Call Ollama API with the given messages"""
+    timeout = aiohttp.ClientTimeout(total=LLM_TIMEOUT)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        # Convert messages to Ollama format
+        # Ollama expects a single prompt, so we'll combine the messages
+        system_message = ""
+        conversation = []
+        
+        for msg in messages:
+            if msg["role"] == "system":
+                system_message = msg["content"]
+            elif msg["role"] == "user":
+                conversation.append(f"User: {msg['content']}")
+            elif msg["role"] == "assistant":
+                conversation.append(f"Assistant: {msg['content']}")
+        
+        # Build the full prompt
+        full_prompt = ""
+        if system_message:
+            full_prompt = f"{system_message}\n\n"
+        full_prompt += "\n".join(conversation)
+        if conversation and conversation[-1].startswith("User:"):
+            full_prompt += "\nAssistant:"
+        
+        # Prepare Ollama API request
+        data = {
+            "model": OLLAMA_MODEL,
+            "prompt": full_prompt,
+            "stream": False,
+            "options": {
+                "temperature": temperature,
+                "num_predict": OLLAMA_NUM_PREDICT,
+                "top_k": OLLAMA_TOP_K,
+                "top_p": OLLAMA_TOP_P,
+                "repeat_penalty": OLLAMA_REPEAT_PENALTY,
+            },
+            "keep_alive": OLLAMA_KEEP_ALIVE
+        }
+        
+        try:
+            async with session.post(f"{OLLAMA_URL}/api/generate", json=data) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    return result.get("response", "")
+                else:
+                    error_text = await response.text()
+                    print(f"Ollama API error: {response.status} - {error_text}")
+                    return None
+        except asyncio.TimeoutError:
+            print(f"[ERROR] Ollama request timed out after {LLM_TIMEOUT} seconds")
+            raise
+        except Exception as e:
+            print(f"Error calling Ollama API: {e}")
+            raise
+
+async def call_openrouter_api(messages, temperature=0.8):
+    """Call OpenRouter API with the given messages"""
+    timeout = aiohttp.ClientTimeout(total=LLM_TIMEOUT)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        headers = {
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        data = {
+            "model": OPENROUTER_MODEL,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": 1000
+        }
+        
+        try:
+            async with session.post(OPENROUTER_URL, headers=headers, json=data) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    return result["choices"][0]["message"]["content"]
+                else:
+                    error_text = await response.text()
+                    print(f"OpenRouter API error: {response.status} - {error_text}")
+                    return None
+        except asyncio.TimeoutError:
+            print(f"[ERROR] OpenRouter request timed out after {LLM_TIMEOUT} seconds")
+            raise
+        except Exception as e:
+            print(f"Error calling OpenRouter API: {e}")
+            raise
 
 async def get_llm_reply(prompt, context=None, previous_message=None, room_id=None, url_contents=None, client=None):
     # Get comprehensive room context
@@ -175,36 +265,28 @@ Keep your personality but be informative. Remember you are Nifty."""
         
         filtered_prompt = filtered_prompt + url_summary
     
-    # Add timeout to the session
-    timeout = aiohttp.ClientTimeout(total=LLM_TIMEOUT)
-    async with aiohttp.ClientSession(timeout=timeout) as session:
-        headers = {
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-            "Content-Type": "application/json"
-        }
+    # Smart web search detection
+    should_search = False
+    if not wants_summary and not about_nifty and not url_contents and not is_price_query:
+        should_search = await needs_web_search(filtered_prompt, room_context)
+    
+    # Search for technical docs if it's a technical question
+    if is_technical and should_search and not url_contents:
+        # Extract search query
+        query = filtered_prompt
+        for keyword in ['search for', 'look up', 'find', 'tell me about', 'what is', 'who is', 'how to', 'how do i']:
+            if keyword in query.lower():
+                query = query.lower().split(keyword)[-1].strip()
+                break
         
-        # Smart web search detection
-        should_search = False
-        if not wants_summary and not about_nifty and not url_contents and not is_price_query:
-            should_search = await needs_web_search(filtered_prompt, room_context)
+        # Search technical resources
+        results = await search_technical_docs(query)
         
-        # Search for technical docs if it's a technical question
-        if is_technical and should_search and not url_contents:
-            # Extract search query
-            query = filtered_prompt
-            for keyword in ['search for', 'look up', 'find', 'tell me about', 'what is', 'who is', 'how to', 'how do i']:
-                if keyword in query.lower():
-                    query = query.lower().split(keyword)[-1].strip()
-                    break
+        if results:
+            search_summary = summarize_search_results(results, query)
             
-            # Search technical resources
-            results = await search_technical_docs(query)
-            
-            if results:
-                search_summary = summarize_search_results(results, query)
-                
-                # Enhanced prompt for technical answers
-                enhanced_prompt = f"""User asked a technical question: {filtered_prompt}
+            # Enhanced prompt for technical answers
+            enhanced_prompt = f"""User asked a technical question: {filtered_prompt}
 
 {search_summary}
 
@@ -215,25 +297,25 @@ Based on these search results, provide a comprehensive technical answer. Include
 4. Alternative approaches if relevant
 
 Remember to maintain your personality while being technically accurate and helpful. You are Nifty, a skilled technical expert."""
-                
-                filtered_prompt = enhanced_prompt
-                
-        elif should_search:
-            # Regular search for non-technical queries
-            query = filtered_prompt
-            for keyword in ['search for', 'look up', 'find', 'tell me about', 'what is', 'who is']:
-                if keyword in query.lower():
-                    query = query.lower().split(keyword)[-1].strip()
-                    break
             
-            # Use Jina search
-            results = await search_with_jina(query)
+            filtered_prompt = enhanced_prompt
             
-            if results:
-                search_summary = summarize_search_results(results, query)
-                
-                # Enhanced prompt for better summarization
-                enhanced_prompt = f"""User asked: {filtered_prompt}
+    elif should_search:
+        # Regular search for non-technical queries
+        query = filtered_prompt
+        for keyword in ['search for', 'look up', 'find', 'tell me about', 'what is', 'who is']:
+            if keyword in query.lower():
+                query = query.lower().split(keyword)[-1].strip()
+                break
+        
+        # Use Jina search
+        results = await search_with_jina(query)
+        
+        if results:
+            search_summary = summarize_search_results(results, query)
+            
+            # Enhanced prompt for better summarization
+            enhanced_prompt = f"""User asked: {filtered_prompt}
 
 {search_summary}
 
@@ -244,73 +326,75 @@ Based on these search results, provide a comprehensive but concise answer. Focus
 4. Being accurate while maintaining your personality
 
 Remember you are Nifty, be aware of your identity."""
-                
-                filtered_prompt = enhanced_prompt
-            else:
-                filtered_prompt += "\n\n(Note: I couldn't retrieve web search results for this query, so I'll provide information based on my training data.)"
-        
-        # Build messages with context
-        messages = [
-            {"role": "system", "content": system_prompt}
-        ]
-        
-        # Add technical context if needed
-        if is_technical:
-            messages[0]["content"] += "\n\nThe user has a technical question. Provide detailed, accurate technical help with code examples when appropriate. Be thorough but concise."
-        
-        # Add conversation history for better context
-        if room_id and room_id in room_message_history:
-            # Get last 10 messages for context
-            recent_messages = list(room_message_history[room_id])[-10:]
-            if len(recent_messages) > 3:
-                context_messages = []
-                for msg in recent_messages[:-1]:  # Exclude the current message
-                    role = "assistant" if msg['sender'] == (client.user_id if client else None) else "user"
-                    # Truncate long messages in context
-                    msg_content = msg['body'][:200] if len(msg['body']) > 200 else msg['body']
-                    context_messages.append({
-                        "role": role,
-                        "content": f"{get_display_name(msg['sender'])}: {msg_content}"
-                    })
-                
-                # Add only last 5 context messages
-                messages.extend(context_messages[-5:])
-        
-        # Add previous message context if this is a reply
-        if previous_message:
-            messages.append({"role": "assistant", "content": f"[Previous message I sent]: {previous_message}"})
-            messages.append({"role": "user", "content": f"[User is replying to the above message]: {filtered_prompt}"})
+            
+            filtered_prompt = enhanced_prompt
         else:
-            messages.append({"role": "user", "content": filtered_prompt})
+            filtered_prompt += "\n\n(Note: I couldn't retrieve web search results for this query, so I'll provide information based on my training data.)"
+    
+    # Build messages with context
+    messages = [
+        {"role": "system", "content": system_prompt}
+    ]
+    
+    # Add technical context if needed
+    if is_technical:
+        messages[0]["content"] += "\n\nThe user has a technical question. Provide detailed, accurate technical help with code examples when appropriate. Be thorough but concise."
+    
+    # Add conversation history for better context
+    if room_id and room_id in room_message_history:
+        # Get last 10 messages for context
+        recent_messages = list(room_message_history[room_id])[-10:]
+        if len(recent_messages) > 3:
+            context_messages = []
+            for msg in recent_messages[:-1]:  # Exclude the current message
+                role = "assistant" if msg['sender'] == (client.user_id if client else None) else "user"
+                # Truncate long messages in context
+                msg_content = msg['body'][:200] if len(msg['body']) > 200 else msg['body']
+                context_messages.append({
+                    "role": role,
+                    "content": f"{get_display_name(msg['sender'])}: {msg_content}"
+                })
+            
+            # Add only last 5 context messages
+            messages.extend(context_messages[-5:])
+    
+    # Add previous message context if this is a reply
+    if previous_message:
+        messages.append({"role": "assistant", "content": f"[Previous message I sent]: {previous_message}"})
+        messages.append({"role": "user", "content": f"[User is replying to the above message]: {filtered_prompt}"})
+    else:
+        messages.append({"role": "user", "content": filtered_prompt})
+    
+    # Adjust temperature based on context
+    temperature = 0.7 if is_technical else 0.8
+    
+    # Use configured temperature for Ollama if using Ollama
+    if LLM_PROVIDER == "ollama":
+        temperature = OLLAMA_TEMPERATURE if not is_technical else min(0.7, OLLAMA_TEMPERATURE)
+    
+    try:
+        # Call the appropriate LLM API based on configuration
+        if LLM_PROVIDER == "ollama":
+            reply = await call_ollama_api(messages, temperature)
+            if reply is None:
+                return "Hey, I'm Nifty and I hit a snag with the Ollama server. Mind trying again? 🔧"
+        elif LLM_PROVIDER == "openrouter":
+            if not OPENROUTER_API_KEY:
+                return "Hey, I'm Nifty but OpenRouter isn't configured. Ask the admin to set it up! 🔧"
+            reply = await call_openrouter_api(messages, temperature)
+            if reply is None:
+                return "Hey, I'm Nifty and I hit a snag with OpenRouter. Mind trying again? 🔧"
+        else:
+            return f"Hey, I'm Nifty but I don't know how to use the '{LLM_PROVIDER}' provider. Check the config! 🔧"
         
-        # Adjust temperature based on context
-        temperature = 0.7 if is_technical else 0.8
+        # Filter the response
+        filtered_reply = filter_bot_triggers(reply)
         
-        data = {
-            "model": OPENROUTER_MODEL,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": 1000
-        }
+        return filtered_reply
         
-        try:
-            async with session.post(OPENROUTER_URL, headers=headers, json=data) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    reply = result["choices"][0]["message"]["content"]
-                    
-                    # Filter the response
-                    filtered_reply = filter_bot_triggers(reply)
-                    
-                    return filtered_reply
-                else:
-                    error_text = await response.text()
-                    print(f"OpenRouter API error: {response.status} - {error_text}")
-                    return f"Hey, I'm Nifty and I hit a snag (error {response.status}). Mind trying again? 🔧"
-        
-        except asyncio.TimeoutError:
-            print(f"[ERROR] LLM request timed out after {LLM_TIMEOUT} seconds")
-            return "Yo, the AI servers are being slow af rn. Try again in a sec? 🔧"
-        except Exception as e:
-            print(f"Error calling OpenRouter API: {e}")
-            return f"Hmm, Nifty here - something went wonky on my end! Could you try that again? 🤔"
+    except asyncio.TimeoutError:
+        print(f"[ERROR] LLM request timed out after {LLM_TIMEOUT} seconds")
+        return "Yo, the AI servers are being slow af rn. Try again in a sec? 🔧"
+    except Exception as e:
+        print(f"Error calling LLM API: {e}")
+        return f"Hmm, Nifty here - something went wonky on my end! Could you try that again? 🤔"

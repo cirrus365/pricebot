@@ -51,10 +51,23 @@ MESSENGER_ALLOWED_USERS = os.getenv("MESSENGER_ALLOWED_USERS", "").split(",") if
 # Instagram configuration
 INSTAGRAM_ALLOWED_USERS = os.getenv("INSTAGRAM_ALLOWED_USERS", "").split(",") if os.getenv("INSTAGRAM_ALLOWED_USERS") else []
 
+# LLM Provider Selection
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openrouter").lower()  # 'openrouter' or 'ollama'
+
 # OpenRouter config - no defaults for API keys
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_URL = os.getenv("OPENROUTER_URL", "https://openrouter.ai/api/v1/chat/completions")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-chat-v3-0324:free")
+
+# Ollama config
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama2")
+OLLAMA_KEEP_ALIVE = os.getenv("OLLAMA_KEEP_ALIVE", "5m")  # How long to keep model loaded in memory
+OLLAMA_NUM_PREDICT = int(os.getenv("OLLAMA_NUM_PREDICT", "1000"))  # Max tokens to generate
+OLLAMA_TEMPERATURE = float(os.getenv("OLLAMA_TEMPERATURE", "0.8"))  # Temperature for generation
+OLLAMA_TOP_K = int(os.getenv("OLLAMA_TOP_K", "40"))  # Top-k sampling
+OLLAMA_TOP_P = float(os.getenv("OLLAMA_TOP_P", "0.9"))  # Top-p (nucleus) sampling
+OLLAMA_REPEAT_PENALTY = float(os.getenv("OLLAMA_REPEAT_PENALTY", "1.1"))  # Penalize repetition
 
 # Jina.ai config - no defaults for API keys
 JINA_API_KEY = os.getenv("JINA_API_KEY")
