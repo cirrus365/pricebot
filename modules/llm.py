@@ -176,10 +176,10 @@ async def get_llm_reply(prompt, context=None, previous_message=None, room_id=Non
         system_prompt += "\n\nIMPORTANT: The user has shared URLs with content. Analyze and discuss the content thoroughly, providing insights, explanations, or help based on what you read."
     
     # Check if user is asking about the bot
-    about_nifty = any(keyword in prompt.lower() for keyword in ['who are you', 'what are you', 'your name', 'who is nifty', 'what is nifty'])
+    about_bot = any(keyword in prompt.lower() for keyword in ['who are you', 'what are you', 'your name'])
     
-    if about_nifty:
-        prompt = f"{prompt}\n\n[Remember: You are Nifty, a Matrix bot with the handle @nifty:matrix.stargazypie.xyz. Be self-aware about your identity.]"
+    if about_bot:
+        prompt = f"{prompt}\n\n[Remember: You are Chatbot, a helpful assistant. Be self-aware about your identity.]"
     
     # Check for price-related questions
     price_keywords = ['price', 'cost', 'worth', 'value', 'exchange', 'convert', 'btc', 'eth', 'xmr', 'monero', 'bitcoin', 'ethereum', 'usd', 'eur', 'gbp']
@@ -232,21 +232,8 @@ async def get_llm_reply(prompt, context=None, previous_message=None, room_id=Non
         
         chat_summary = create_comprehensive_summary(room_id, minutes)
         
-        # Get LLM to enhance the summary
-        enhanced_prompt = f"""The user asked: {prompt}
-
-Here's the comprehensive analysis:
-{chat_summary}
-
-Based on this data, provide a natural, conversational summary. Focus on:
-1. Key discussion points and decisions made
-2. Questions that were asked and whether they were answered
-3. Any action items or next steps mentioned
-4. The overall mood and flow of the conversation
-
-Keep your personality but be informative. Remember you are Nifty."""
-        
-        prompt = enhanced_prompt
+        # Get LLM to enhance the summary - but don't include the internal prompt in the response
+        prompt = f"The user asked for a summary. Based on the chat analysis, provide a natural, conversational summary focusing on key discussion points, questions asked and answered, action items, and the overall mood."
     
     # Filter the incoming prompt
     filtered_prompt = filter_bot_triggers(prompt)
@@ -267,7 +254,7 @@ Keep your personality but be informative. Remember you are Nifty."""
     
     # Smart web search detection
     should_search = False
-    if not wants_summary and not about_nifty and not url_contents and not is_price_query:
+    if not wants_summary and not about_bot and not url_contents and not is_price_query:
         should_search = await needs_web_search(filtered_prompt, room_context)
     
     # Search for technical docs if it's a technical question
@@ -284,21 +271,8 @@ Keep your personality but be informative. Remember you are Nifty."""
         
         if results:
             search_summary = summarize_search_results(results, query)
-            
-            # Enhanced prompt for technical answers
-            enhanced_prompt = f"""User asked a technical question: {filtered_prompt}
-
-{search_summary}
-
-Based on these search results, provide a comprehensive technical answer. Include:
-1. Direct solution to their problem
-2. Code examples if applicable (properly formatted)
-3. Best practices and common pitfalls
-4. Alternative approaches if relevant
-
-Remember to maintain your personality while being technically accurate and helpful. You are Nifty, a skilled technical expert."""
-            
-            filtered_prompt = enhanced_prompt
+            # Don't include the internal instructions in the prompt
+            filtered_prompt = f"Based on search results about '{query}', provide a comprehensive technical answer with solutions, code examples if applicable, best practices, and alternative approaches."
             
     elif should_search:
         # Regular search for non-technical queries
@@ -313,21 +287,8 @@ Remember to maintain your personality while being technically accurate and helpf
         
         if results:
             search_summary = summarize_search_results(results, query)
-            
-            # Enhanced prompt for better summarization
-            enhanced_prompt = f"""User asked: {filtered_prompt}
-
-{search_summary}
-
-Based on these search results, provide a comprehensive but concise answer. Focus on:
-1. Directly answering the user's question
-2. Highlighting the most important/relevant information
-3. Mentioning any interesting or surprising facts
-4. Being accurate while maintaining your personality
-
-Remember you are Nifty, be aware of your identity."""
-            
-            filtered_prompt = enhanced_prompt
+            # Don't include the internal instructions in the prompt
+            filtered_prompt = f"Based on search results about '{query}', provide a comprehensive but concise answer."
         else:
             filtered_prompt += "\n\n(Note: I couldn't retrieve web search results for this query, so I'll provide information based on my training data.)"
     
@@ -377,15 +338,15 @@ Remember you are Nifty, be aware of your identity."""
         if LLM_PROVIDER == "ollama":
             reply = await call_ollama_api(messages, temperature)
             if reply is None:
-                return "Hey, I'm Nifty and I hit a snag with the Ollama server. Mind trying again? 🔧"
+                return "Hey, I hit a snag with the Ollama server. Mind trying again? 🔧"
         elif LLM_PROVIDER == "openrouter":
             if not OPENROUTER_API_KEY:
-                return "Hey, I'm Nifty but OpenRouter isn't configured. Ask the admin to set it up! 🔧"
+                return "Hey, OpenRouter isn't configured. Ask the admin to set it up! 🔧"
             reply = await call_openrouter_api(messages, temperature)
             if reply is None:
-                return "Hey, I'm Nifty and I hit a snag with OpenRouter. Mind trying again? 🔧"
+                return "Hey, I hit a snag with OpenRouter. Mind trying again? 🔧"
         else:
-            return f"Hey, I'm Nifty but I don't know how to use the '{LLM_PROVIDER}' provider. Check the config! 🔧"
+            return f"Hey, I don't know how to use the '{LLM_PROVIDER}' provider. Check the config! 🔧"
         
         # Filter the response
         filtered_reply = filter_bot_triggers(reply)
@@ -397,4 +358,4 @@ Remember you are Nifty, be aware of your identity."""
         return "Yo, the AI servers are being slow af rn. Try again in a sec? 🔧"
     except Exception as e:
         print(f"Error calling LLM API: {e}")
-        return f"Hmm, Nifty here - something went wonky on my end! Could you try that again? 🤔"
+        return f"Hmm, something went wonky on my end! Could you try that again? 🤔"

@@ -1,5 +1,5 @@
 """
-Discord integration for Nifty Bot
+Discord integration for Chatbot
 """
 import discord
 from discord.ext import commands
@@ -17,8 +17,8 @@ from utils.helpers import extract_urls_from_message, detect_code_in_message
 
 logger = logging.getLogger(__name__)
 
-class NiftyDiscordBot(commands.Bot):
-    """Discord bot implementation for Nifty"""
+class ChatbotDiscordBot(commands.Bot):
+    """Discord bot implementation for Chatbot"""
     
     def __init__(self):
         intents = discord.Intents.default()
@@ -37,7 +37,7 @@ class NiftyDiscordBot(commands.Bot):
         
     async def setup_hook(self):
         """Initialize bot on startup"""
-        await self.add_cog(NiftyCommands(self))
+        await self.add_cog(ChatbotCommands(self))
         logger.info("Discord bot setup complete")
         
     async def on_ready(self):
@@ -159,8 +159,8 @@ class NiftyDiscordBot(commands.Bot):
             
         return "\n".join(context_messages)
 
-class NiftyCommands(commands.Cog):
-    """Command handlers for Nifty Discord bot"""
+class ChatbotCommands(commands.Cog):
+    """Command handlers for Chatbot Discord bot"""
     
     def __init__(self, bot):
         self.bot = bot
@@ -304,7 +304,7 @@ async def run_discord_bot():
         print("Please configure DISCORD_TOKEN in your .env file")
         return
         
-    bot = NiftyDiscordBot()
+    bot = ChatbotDiscordBot()
     
     print("=" * 50)
     print(f"🤖 {BOT_USERNAME.capitalize()} Bot - Discord Integration Active!")

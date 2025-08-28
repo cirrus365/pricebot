@@ -1,5 +1,5 @@
 """
-Matrix integration for Nifty Bot
+Matrix integration for Chatbot
 """
 import asyncio
 import logging

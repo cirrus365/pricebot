@@ -1,5 +1,5 @@
 """
-Telegram integration for Nifty Bot
+Telegram integration for Chatbot
 """
 import logging
 import asyncio
@@ -19,7 +19,7 @@ from utils.helpers import extract_urls_from_message, detect_code_in_message
 logger = logging.getLogger(__name__)
 
 class TelegramBot:
-    """Telegram bot implementation for Nifty"""
+    """Telegram bot implementation for Chatbot"""
     
     def __init__(self):
         self.conversation_history = {}  # chat_id -> list of messages
