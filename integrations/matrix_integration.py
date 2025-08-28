@@ -179,18 +179,7 @@ async def handle_meme_command(client, room, event):
         meme_url, caption = await meme_generator.handle_meme_command(event.body)
         
         if meme_url:
-            # Send the meme as an image with caption
-            content = {
-                "body": caption,
-                "msgtype": "m.image",
-                "url": meme_url,
-                "info": {
-                    "mimetype": "image/jpeg"
-                }
-            }
-            
-            # For Matrix, we need to upload the image first or use the direct URL
-            # Since Imgflip provides a direct URL, we can use it
+            # Send the message with both caption and URL
             formatted_body = f"{caption}\n{meme_url}"
             
             await client.room_send(
@@ -200,7 +189,7 @@ async def handle_meme_command(client, room, event):
                     "msgtype": "m.text",
                     "body": formatted_body,
                     "format": "org.matrix.custom.html",
-                    "formatted_body": f'<p>{caption}</p><img src="{meme_url}" alt="meme"/>'
+                    "formatted_body": f'<p>{caption}</p><p><a href="{meme_url}">{meme_url}</a></p>'
                 }
             )
         else:
