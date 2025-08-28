@@ -45,8 +45,11 @@ async def run_matrix_bot():
         
         # Create wrapped callbacks that include the client
         async def wrapped_message_callback(room, event):
+            # Check if it's a help command
+            if event.body.strip() == '!help':
+                await handle_help_command(client, room, event)
             # Check if it's a meme command
-            if event.body.startswith('!meme ') and ENABLE_MEME_GENERATION:
+            elif event.body.startswith('!meme ') and ENABLE_MEME_GENERATION:
                 await handle_meme_command(client, room, event)
             else:
                 await message_callback(client, room, event)
@@ -79,6 +82,7 @@ async def run_matrix_bot():
         print("👀 Emoji reactions: ENABLED (various triggers)")
         print(f"🧹 Reset: '{BOT_USERNAME} !reset' to clear context")
         print(f"📊 Summary: '{BOT_USERNAME} summary' for comprehensive chat analysis")
+        print("📚 Help: !help to see all available commands")
         if ENABLE_MEME_GENERATION:
             print("🎨 Meme generation: !meme <topic> to create memes")
         print("🧠 Optimized Context: Tracking 100 messages (reduced for performance)")
@@ -102,6 +106,68 @@ async def run_matrix_bot():
         raise
     finally:
         await client.close()
+
+async def handle_help_command(client, room, event):
+    """Handle help command for Matrix"""
+    try:
+        # Build help message
+        help_text = f"""📚 **{BOT_USERNAME.capitalize()} Bot - Available Commands**
+
+**General Commands:**
+• `!help` - Show this help message
+• `{BOT_USERNAME} <message>` - Chat with me by mentioning my name
+• Reply to any of my messages to continue the conversation
+• `{BOT_USERNAME} !reset` - Clear conversation context for this room
+• `{BOT_USERNAME} summary` - Get a comprehensive analysis of recent chat
+
+**Fun & Utility:**"""
+        
+        if ENABLE_MEME_GENERATION:
+            help_text += "\n• `!meme <topic>` - Generate a meme with AI-generated captions"
+        
+        help_text += f"""
+• `{BOT_USERNAME} price <crypto>` - Get cryptocurrency prices (e.g., XMR, BTC, ETH)
+• `{BOT_USERNAME} search <query>` - Search the web for current information
+
+**Features:**
+• 🔗 **URL Analysis** - Share any URL and I'll read and discuss it
+• 📝 **Code Support** - I can help with programming questions and format code properly
+• 👀 **Smart Reactions** - I'll react with emojis to certain keywords
+• 🧠 **Context Aware** - I remember the last 100 messages in each room
+• 🔍 **Auto Search** - I'll automatically search for current events when needed
+
+**Tips:**
+• I'm particularly knowledgeable about programming, Linux, security, and privacy
+• I can analyze technical documentation and help with coding problems
+• Share URLs to articles or documentation for me to analyze
+• I maintain conversation context and can reference earlier messages
+
+Need more help? Just ask me anything!"""
+
+        # Send help message with formatting
+        await client.room_send(
+            room_id=room.room_id,
+            message_type="m.room.message",
+            content={
+                "msgtype": "m.text",
+                "body": help_text.replace("**", "").replace("•", "-"),  # Plain text fallback
+                "format": "org.matrix.custom.html",
+                "formatted_body": help_text.replace("**", "<strong>").replace("**", "</strong>")
+                                           .replace("•", "•")
+                                           .replace("\n", "<br/>")
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Error handling help command: {e}")
+        await client.room_send(
+            room_id=room.room_id,
+            message_type="m.room.message",
+            content={
+                "msgtype": "m.text",
+                "body": "Sorry, I couldn't display the help message. Please try again."
+            }
+        )
 
 async def handle_meme_command(client, room, event):
     """Handle meme generation command for Matrix"""
