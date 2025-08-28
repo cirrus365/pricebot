@@ -23,6 +23,10 @@ HOMESERVER = os.getenv("MATRIX_HOMESERVER")
 USERNAME = os.getenv("MATRIX_USERNAME")
 PASSWORD = os.getenv("MATRIX_PASSWORD")
 
+# Matrix Auto-Invite Settings
+ENABLE_AUTO_INVITE = os.getenv("ENABLE_AUTO_INVITE", "true").lower() == "true"
+ALLOWED_INVITE_USERS = os.getenv("ALLOWED_INVITE_USERS", "").split(",") if os.getenv("ALLOWED_INVITE_USERS") else []
+
 # Discord credentials - no defaults for sensitive data
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 DISCORD_COMMAND_PREFIX = os.getenv("DISCORD_COMMAND_PREFIX", "!")
