@@ -39,6 +39,24 @@ class PriceTracker:
         'ARS', 'CLP', 'COP', 'PEN', 'UYU', 'PHP', 'MYR', 'IDR'
     }
     
+    # Common words that should NOT be treated as crypto/currency symbols
+    EXCLUDED_WORDS = {
+        'HI', 'HEY', 'HELLO', 'BYE', 'YES', 'NO', 'OK', 'OKAY',
+        'THANKS', 'THX', 'TY', 'YO', 'YEAH', 'YEP', 'NOPE', 'NAH',
+        'LOL', 'LMAO', 'WTF', 'OMG', 'IDK', 'IMO', 'TBH', 'BTW',
+        'FYI', 'ASAP', 'AFK', 'BRB', 'GG', 'GL', 'HF', 'NP',
+        'PLZ', 'PLS', 'THO', 'TIL', 'TTYL', 'WOW', 'YAY', 'YOLO',
+        'COOL', 'NICE', 'GOOD', 'BAD', 'GREAT', 'FINE', 'SURE',
+        'MAYBE', 'WHY', 'WHAT', 'WHO', 'WHEN', 'WHERE', 'HOW',
+        'CAN', 'WILL', 'DO', 'DOES', 'DID', 'IS', 'ARE', 'WAS',
+        'WERE', 'BE', 'BEEN', 'AM', 'THE', 'A', 'AN', 'AND',
+        'OR', 'BUT', 'IF', 'THEN', 'ELSE', 'FOR', 'TO', 'FROM',
+        'IN', 'ON', 'AT', 'BY', 'WITH', 'UP', 'DOWN', 'OUT',
+        'OFF', 'OVER', 'UNDER', 'AGAIN', 'ALL', 'BOTH', 'EACH',
+        'FEW', 'MORE', 'MOST', 'OTHER', 'SOME', 'SUCH', 'ANY',
+        'HELP', 'TEST', 'PING', 'PONG', 'ECHO', 'DEBUG', 'INFO'
+    }
+    
     @staticmethod
     def get_cache_key(from_currency: str, to_currency: str) -> str:
         """Generate cache key for rate pair"""
@@ -227,6 +245,9 @@ class PriceTracker:
             match = re.search(pattern, message_lower.strip())
             if match:
                 potential_crypto = match.group(1).upper()
+                # Check if it's an excluded word (common greeting/conversation word)
+                if potential_crypto in cls.EXCLUDED_WORDS:
+                    continue
                 # Check if it's a known crypto or likely crypto (short symbol)
                 if potential_crypto in cls.CRYPTO_SYMBOLS or (len(potential_crypto) <= 5 and potential_crypto not in cls.COMMON_FIAT):
                     return {
@@ -248,6 +269,10 @@ class PriceTracker:
             if match:
                 potential_crypto = match.group(1).upper()
                 potential_fiat = match.group(2).upper() if match.group(2) else 'USD'
+                
+                # Check if it's an excluded word
+                if potential_crypto in cls.EXCLUDED_WORDS:
+                    continue
                 
                 # Check if it's a known crypto
                 if potential_crypto in cls.CRYPTO_SYMBOLS or (len(potential_crypto) <= 5 and potential_crypto not in cls.COMMON_FIAT):

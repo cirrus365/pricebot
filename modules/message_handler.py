@@ -122,7 +122,8 @@ async def message_callback(client, room: MatrixRoom, event: RoomMessageText):
                 print(f"[DEBUG] User is replying to bot's message: {previous_message[:50]}...")
     
     # Check for price requests first (before bot mention check)
-    if ENABLE_PRICE_TRACKING:
+    # BUT skip price checking if this is a reply to the bot
+    if ENABLE_PRICE_TRACKING and not replied_to_bot:
         price_response = await price_tracker.get_price_response(event.body)
         if price_response:
             print(f"[DEBUG] Detected price request, sending response")
