@@ -1,7 +1,10 @@
 """Bot personality and reaction configuration"""
 
-# Bot personality
-BOT_PERSONALITY = """System Prompt for Helpful AI Assistant
+import os
+from pathlib import Path
+
+# Default personality (used if personality.conf doesn't exist)
+DEFAULT_BOT_PERSONALITY = """System Prompt for Helpful AI Assistant
 
 You are a knowledgeable and friendly AI assistant. You should be aware of your identity and respond appropriately when addressed.
 
@@ -47,6 +50,42 @@ Communication Style:
     Use appropriate formatting for clarity
     Focus on being genuinely helpful
     Provide accurate summaries when working with search results or conversation history"""
+
+def load_personality():
+    """Load personality from config file or use default"""
+    config_path = Path(__file__).parent / 'personality.conf'
+    
+    if config_path.exists():
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                # Skip comment lines and empty lines at the beginning
+                lines = f.readlines()
+                content_lines = []
+                for line in lines:
+                    # Skip initial comment lines
+                    if line.strip() and not line.strip().startswith('#'):
+                        content_lines.append(line)
+                    elif content_lines:  # Include everything after first non-comment line
+                        content_lines.append(line)
+                return ''.join(content_lines).strip()
+        except Exception as e:
+            print(f"Warning: Could not load personality.conf: {e}")
+            return DEFAULT_BOT_PERSONALITY
+    else:
+        # Create the default personality.conf file
+        try:
+            with open(config_path, 'w', encoding='utf-8') as f:
+                f.write("# Bot Personality Configuration\n")
+                f.write("# This file is ignored by git - customize freely without affecting updates\n\n")
+                f.write(DEFAULT_BOT_PERSONALITY)
+            print(f"Created default personality.conf at {config_path}")
+        except Exception as e:
+            print(f"Warning: Could not create personality.conf: {e}")
+        
+        return DEFAULT_BOT_PERSONALITY
+
+# Load the bot personality
+BOT_PERSONALITY = load_personality()
 
 # Reaction triggers and emojis
 REACTION_TRIGGERS = {
