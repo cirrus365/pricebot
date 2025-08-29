@@ -80,7 +80,7 @@ class TelegramBot:
             f"👋 Hey! I'm {BOT_USERNAME.capitalize()}, your digital assistant!\n\n"
             "Here's what I can do:\n"
             "💬 Just chat with me normally\n"
-            "💰 /price <crypto> - Get crypto prices\n"
+            "💰 /price <crypto> [currency] - Get prices\n"
             "🔍 /search <query> - Search the web\n"
         )
         
@@ -106,8 +106,9 @@ class TelegramBot:
             "*Chat Commands:*\n"
             "💬 Just send me a message to chat!\n"
             "/reset - Clear conversation history\n\n"
-            "*Crypto Commands:*\n"
-            "💰 /price <crypto> - Get cryptocurrency price\n"
+            "*Price Commands:*\n"
+            "💰 /price <crypto> [currency] - Get cryptocurrency price\n"
+            "/price <from> <to> - Get exchange rate\n"
             "/xmr - Quick Monero price check\n\n"
         )
         
@@ -124,8 +125,7 @@ class TelegramBot:
             "🏓 /ping - Check bot latency\n\n"
             "*Other:*\n"
             "❓ /help - Show this message\n"
-            "👋 /start - Welcome message\n\n"
-            f"*Note:* For price queries in regular chat, mention my name ({BOT_USERNAME}) along with your query."
+            "👋 /start - Welcome message\n"
         )
         
         await update.message.reply_text(help_text, parse_mode=ParseMode.MARKDOWN)
@@ -180,14 +180,14 @@ class TelegramBot:
         # Send typing indicator
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
         
-        crypto = " ".join(context.args) if context.args else "XMR"
-        response = await price_tracker.get_price_response(f"price {crypto}")
+        query = " ".join(context.args) if context.args else "XMR"
+        response = await price_tracker.get_price_response(f"price {query}")
         
         if response:
-            message = f"💰 *{crypto.upper()} Price*\n\n{response}"
+            message = f"💰 *Price Information*\n\n{response}"
             await update.message.reply_text(message, parse_mode=ParseMode.MARKDOWN)
         else:
-            await update.message.reply_text(f"❌ Couldn't fetch price for {crypto}")
+            await update.message.reply_text(f"❌ Couldn't fetch price for {query}")
             
     async def xmr_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /xmr command - quick Monero price check"""
@@ -273,15 +273,6 @@ class TelegramBot:
         
         # Store message in history
         self.store_message(chat_id, username, message_text)
-        
-        # Check if this is a price query with bot mention
-        message_lower = message_text.lower()
-        if ENABLE_PRICE_TRACKING and BOT_USERNAME.lower() in message_lower:
-            # Try to get price response
-            price_response = await price_tracker.get_price_response(message_text)
-            if price_response:
-                await update.message.reply_text(f"💰 {price_response}", parse_mode=ParseMode.MARKDOWN)
-                return
         
         # Get conversation context
         context_str = self.get_conversation_context(chat_id)
@@ -372,8 +363,7 @@ async def run_telegram_bot():
         print(f"✅ Bot Name: {BOT_USERNAME.capitalize()}")
         print("📝 Commands: /help to see all commands")
         print("💬 Chat: Just send a message to chat")
-        print("💰 Price tracking: /price <crypto> or /xmr")
-        print(f"   For inline prices: mention '{BOT_USERNAME}' with your query")
+        print("💰 Price tracking: /price <crypto> [currency] or /price <from> <to>")
         if ENABLE_MEME_GENERATION:
             print("🎨 Meme generation: /meme <topic> to create memes")
         print("🔍 Web search: /search <query>")

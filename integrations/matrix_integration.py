@@ -46,10 +46,10 @@ async def run_matrix_bot():
         # Create wrapped callbacks that include the client
         async def wrapped_message_callback(room, event):
             # Check if it's a help command
-            if event.body.strip() == '!help':
+            if event.body.strip() == '?help':
                 await handle_help_command(client, room, event)
             # Check if it's a meme command
-            elif event.body.startswith('!meme ') and ENABLE_MEME_GENERATION:
+            elif event.body.startswith('?meme ') and ENABLE_MEME_GENERATION:
                 await handle_meme_command(client, room, event)
             else:
                 await message_callback(client, room, event)
@@ -82,9 +82,10 @@ async def run_matrix_bot():
         print("👀 Emoji reactions: ENABLED (various triggers)")
         print(f"🧹 Reset: '{BOT_USERNAME} !reset' to clear context")
         print(f"📊 Summary: '{BOT_USERNAME} summary' for comprehensive chat analysis")
-        print("📚 Help: !help to see all available commands")
+        print("📚 Help: ?help to see all available commands")
+        print("💰 Price: ?price <crypto> [currency] for crypto/fiat prices")
         if ENABLE_MEME_GENERATION:
-            print("🎨 Meme generation: !meme <topic> to create memes")
+            print("🎨 Meme generation: ?meme <topic> to create memes")
         print("🧠 Optimized Context: Tracking 100 messages (reduced for performance)")
         print("📈 Context Features: Topic tracking, user expertise, important messages")
         print("💻 Technical expertise: Programming, Linux, Security, etc.")
@@ -114,19 +115,23 @@ async def handle_help_command(client, room, event):
         help_text = f"""📚 **{BOT_USERNAME.capitalize()} Bot - Available Commands**
 
 **General Commands:**
-• `!help` - Show this help message
+• `?help` - Show this help message
 • `{BOT_USERNAME} <message>` - Chat with me by mentioning my name
 • Reply to any of my messages to continue the conversation
 • `{BOT_USERNAME} !reset` - Clear conversation context for this room
 • `{BOT_USERNAME} summary` - Get a comprehensive analysis of recent chat
 
+**Price & Finance:**
+• `?price <crypto> [currency]` - Get cryptocurrency prices
+• `?price <from_currency> <to_currency>` - Get fiat exchange rates
+• Examples: `?price xmr usd`, `?price btc`, `?price usd aud`
+
 **Fun & Utility:**"""
         
         if ENABLE_MEME_GENERATION:
-            help_text += "\n• `!meme <topic>` - Generate a meme with AI-generated captions"
+            help_text += "\n• `?meme <topic>` - Generate a meme with AI-generated captions"
         
         help_text += f"""
-• `{BOT_USERNAME} price <crypto>` - Get cryptocurrency prices (e.g., XMR, BTC, ETH)
 • `{BOT_USERNAME} search <query>` - Search the web for current information
 
 **Features:**
@@ -175,8 +180,9 @@ async def handle_meme_command(client, room, event):
         # Send typing indicator
         await client.room_typing(room.room_id, typing_state=True)
         
-        # Generate meme
-        meme_url, caption = await meme_generator.handle_meme_command(event.body)
+        # Generate meme - change the command prefix from ! to ?
+        meme_input = event.body.replace('?meme', '!meme', 1)
+        meme_url, caption = await meme_generator.handle_meme_command(meme_input)
         
         if meme_url:
             # Send the message with both caption and URL

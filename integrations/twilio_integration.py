@@ -188,8 +188,10 @@ class TwilioBot:
         
         try:
             # Check for meme command
-            if message.startswith('!meme ') and ENABLE_MEME_GENERATION:
-                meme_url, caption = await meme_generator.handle_meme_command(message)
+            if message.startswith('?meme ') and ENABLE_MEME_GENERATION:
+                # Convert ?meme to !meme for the meme generator
+                meme_command = message.replace('?meme', '!meme', 1)
+                meme_url, caption = await meme_generator.handle_meme_command(meme_command)
                 if meme_url:
                     # For platforms that support images, return URL with caption
                     return f"{caption}\n\nView meme: {meme_url}"
@@ -197,15 +199,8 @@ class TwilioBot:
                     return caption or "Failed to generate meme."
             
             # Check for other commands
-            if message.startswith('/'):
+            if message.startswith('?'):
                 return await self.handle_command(message, sender_id, platform)
-            
-            # Check for price queries - require bot name mention
-            message_lower = message.lower()
-            if ENABLE_PRICE_TRACKING and BOT_USERNAME.lower() in message_lower:
-                price_response = await price_tracker.get_price_response(message)
-                if price_response:
-                    return f"💰 {price_response}"
             
             # Get conversation context
             context = self.get_conversation_context(sender_id, platform)
@@ -237,42 +232,45 @@ class TwilioBot:
         cmd_parts = command.split()
         cmd = cmd_parts[0].lower()
         
-        if cmd in ['/help', '/start']:
+        if cmd in ['?help', '?start']:
             return self.get_help_text(platform)
         
-        elif cmd == '/price' and ENABLE_PRICE_TRACKING:
-            crypto = cmd_parts[1] if len(cmd_parts) > 1 else "XMR"
-            price_response = await price_tracker.get_price_response(f"price {crypto}")
-            return price_response or f"Could not fetch price for {crypto}"
+        elif cmd == '?price' and ENABLE_PRICE_TRACKING:
+            if len(cmd_parts) > 1:
+                query = ' '.join(cmd_parts[1:])
+                price_response = await price_tracker.get_price_response(f"price {query}")
+                return price_response or f"Could not fetch price for {query}"
+            else:
+                return "Usage: ?price <crypto> [currency] or ?price <from> <to>\nExamples: ?price xmr usd, ?price btc, ?price usd aud"
         
-        elif cmd == '/stats':
+        elif cmd == '?stats':
             history_key = f"{platform}:{sender_id}"
             message_count = len(message_history[history_key])
             return f"📊 Stats:\n• Messages in history: {message_count}\n• Platform: {platform.title()}"
         
-        elif cmd == '/reset':
+        elif cmd == '?reset':
             message_history[f"{platform}:{sender_id}"].clear()
             return "✅ Conversation history cleared!"
         
         else:
-            return f"Unknown command: {cmd}. Type /help for available commands."
+            return f"Unknown command: {cmd}. Type ?help for available commands."
     
     def get_help_text(self, platform: str) -> str:
         """Get platform-specific help text"""
         base_help = (
             f"👋 Hello! I'm {BOT_USERNAME.capitalize()}, your AI assistant on {platform.title()}!\n\n"
             "Available commands:\n"
-            "/help - Show this help message\n"
-            "/stats - Show conversation statistics\n"
-            "/reset - Clear conversation history\n"
+            "?help - Show this help message\n"
+            "?stats - Show conversation statistics\n"
+            "?reset - Clear conversation history\n"
         )
         
         if ENABLE_PRICE_TRACKING:
-            base_help += f"/price [crypto] - Get cryptocurrency price (default: XMR)\n"
-            base_help += f"\nFor inline price queries, mention '{BOT_USERNAME}' with your query.\n"
+            base_help += "?price <crypto> [currency] - Get cryptocurrency price\n"
+            base_help += "?price <from> <to> - Get exchange rate\n"
         
         if ENABLE_MEME_GENERATION:
-            base_help += "!meme <topic> - Generate a meme with AI captions\n"
+            base_help += "?meme <topic> - Generate a meme with AI captions\n"
         
         base_help += "\nJust send me a message to chat!"
         
@@ -352,10 +350,10 @@ async def run_twilio_bot():
         logger.info(f"  Instagram: {TWILIO_WEBHOOK_BASE_URL}/instagram")
     
     if ENABLE_MEME_GENERATION:
-        logger.info("  Meme generation: !meme <topic> command enabled")
+        logger.info("  Meme generation: ?meme <topic> command enabled")
     
     if ENABLE_PRICE_TRACKING:
-        logger.info(f"  Price queries: mention '{BOT_USERNAME}' with your query")
+        logger.info("  Price queries: ?price <crypto> [currency] or ?price <from> <to>")
     
     # Create and run the bot
     bot = TwilioBot()

@@ -27,7 +27,7 @@ class ChatbotDiscordBot(commands.Bot):
         intents.messages = True
         
         super().__init__(
-            command_prefix=DISCORD_COMMAND_PREFIX,
+            command_prefix='?',  # Changed from DISCORD_COMMAND_PREFIX to ?
             intents=intents,
             description=f"{BOT_USERNAME.capitalize()} - Your digital assistant"
         )
@@ -49,7 +49,7 @@ class ChatbotDiscordBot(commands.Bot):
         await self.change_presence(
             activity=discord.Activity(
                 type=discord.ActivityType.listening,
-                name="your questions | !help"
+                name="your questions | ?help"
             )
         )
         
@@ -104,18 +104,6 @@ class ChatbotDiscordBot(commands.Bot):
             if not content:
                 await message.reply("Hey! What's up? Ask me something!")
                 return
-            
-            # Check for price queries when bot is mentioned
-            if ENABLE_PRICE_TRACKING:
-                price_response = await price_tracker.get_price_response(content)
-                if price_response:
-                    embed = discord.Embed(
-                        title="💰 Price Information",
-                        description=price_response,
-                        color=discord.Color.green()
-                    )
-                    await message.reply(embed=embed)
-                    return
                 
             # Get conversation context
             context = self.get_conversation_context(message.channel.id)
@@ -188,20 +176,20 @@ class ChatbotCommands(commands.Cog):
         
         embed.add_field(
             name="💬 Chat",
-            value=f"Just mention me or reply to my messages!\nFor prices, mention me with your query (e.g., @{BOT_USERNAME} XMR USD)",
+            value=f"Just mention me or reply to my messages!",
             inline=False
         )
         
         embed.add_field(
             name="💰 Price Commands",
-            value="`!price <crypto>` - Get crypto prices\n`!xmr` - Get Monero price",
+            value="`?price <crypto> [currency]` - Get crypto prices\n`?price <from> <to>` - Get exchange rates\n`?xmr` - Get Monero price",
             inline=False
         )
         
         if ENABLE_MEME_GENERATION:
             embed.add_field(
                 name="🎨 Meme Generation",
-                value="`!meme <topic>` - Generate a meme with AI captions",
+                value="`?meme <topic>` - Generate a meme with AI captions",
                 inline=False
             )
         
@@ -213,7 +201,7 @@ class ChatbotCommands(commands.Cog):
         
         embed.add_field(
             name="📊 Info",
-            value="`!stats` - Bot statistics\n`!ping` - Check bot latency",
+            value="`?stats` - Bot statistics\n`?ping` - Check bot latency",
             inline=False
         )
         
@@ -228,7 +216,7 @@ class ChatbotCommands(commands.Cog):
             return
             
         if not topic:
-            await ctx.send("Please provide a topic for the meme. Usage: `!meme <topic>`")
+            await ctx.send("Please provide a topic for the meme. Usage: `?meme <topic>`")
             return
             
         async with ctx.typing():
@@ -248,25 +236,25 @@ class ChatbotCommands(commands.Cog):
             else:
                 await ctx.send(caption or "Failed to generate meme. Please try again.")
         
-    @commands.command(name='price', help='Get cryptocurrency prices')
-    async def price_command(self, ctx, *, crypto: str = "XMR"):
-        """Get cryptocurrency price"""
+    @commands.command(name='price', help='Get cryptocurrency prices or exchange rates')
+    async def price_command(self, ctx, *, query: str = "XMR"):
+        """Get cryptocurrency price or exchange rate"""
         async with ctx.typing():
-            response = await price_tracker.get_price_response(f"price {crypto}")
+            response = await price_tracker.get_price_response(f"price {query}")
             if response:
                 embed = discord.Embed(
-                    title=f"💰 {crypto.upper()} Price",
+                    title=f"💰 Price Information",
                     description=response,
                     color=discord.Color.green()
                 )
                 await ctx.send(embed=embed)
             else:
-                await ctx.send(f"Couldn't fetch price for {crypto}")
+                await ctx.send(f"Couldn't fetch price for {query}")
                 
     @commands.command(name='xmr', help='Get Monero price')
     async def xmr_command(self, ctx):
         """Quick command for Monero price"""
-        await self.price_command(ctx, crypto="XMR")
+        await self.price_command(ctx, query="XMR")
         
     @commands.command(name='stats', help='Show bot statistics')
     async def stats_command(self, ctx):
@@ -323,13 +311,13 @@ async def run_discord_bot():
     print("=" * 50)
     print("✅ Discord bot starting...")
     print(f"✅ Bot Name: {BOT_USERNAME.capitalize()}")
-    print("📝 Commands: Use ! prefix (e.g., !help)")
+    print("📝 Commands: Use ? prefix (e.g., ?help)")
     print("💬 Chat: Mention the bot or reply to its messages")
-    print(f"💰 Price tracking: !price <crypto> or mention bot with query")
+    print(f"💰 Price tracking: ?price <crypto> [currency] or ?price <from> <to>")
     if ENABLE_MEME_GENERATION:
-        print("🎨 Meme generation: !meme <topic> to create memes")
+        print("🎨 Meme generation: ?meme <topic> to create memes")
     print("🔍 Web search: Ask to search for anything")
-    print("📊 Stats: !stats for bot statistics")
+    print("📊 Stats: ?stats for bot statistics")
     print("=" * 50)
     
     try:

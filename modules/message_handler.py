@@ -102,6 +102,38 @@ async def message_callback(client, room: MatrixRoom, event: RoomMessageText):
     # Maybe react to the message
     await maybe_react(client, room.room_id, event.event_id, event.body)
     
+    # Check if message starts with ? for commands
+    if event.body.strip().startswith('?'):
+        # Handle ? prefix commands
+        command_parts = event.body.strip().split()
+        command = command_parts[0].lower()
+        
+        # Handle ?price command
+        if command == '?price' and ENABLE_PRICE_TRACKING:
+            if len(command_parts) >= 2:
+                # Build the price query from remaining parts
+                price_query = ' '.join(command_parts[1:])
+                price_response = await price_tracker.get_price_response(f"price {price_query}")
+                if price_response:
+                    print(f"[DEBUG] Processing ?price command: {price_query}")
+                    await send_formatted_message(client, room.room_id, price_response)
+                    return
+            else:
+                await client.room_send(
+                    room_id=room.room_id,
+                    message_type="m.room.message",
+                    content={
+                        "msgtype": "m.text",
+                        "body": "Usage: ?price <crypto> [currency]\nExamples: ?price xmr usd, ?price btc, ?price usd aud"
+                    }
+                )
+                return
+        
+        # ?help command is handled in matrix_integration.py
+        # ?meme command is handled in matrix_integration.py
+        # Let those handlers process these commands
+        return
+    
     # Check if this is a reply to a message
     is_reply = False
     replied_to_bot = False
@@ -133,14 +165,6 @@ async def message_callback(client, room: MatrixRoom, event: RoomMessageText):
         bot_localpart.lower() in message_lower or
         replied_to_bot
     )
-    
-    # Check for price requests - now ONLY if bot is mentioned
-    if ENABLE_PRICE_TRACKING and should_respond:
-        price_response = await price_tracker.get_price_response(event.body)
-        if price_response:
-            print(f"[DEBUG] Detected price request with bot mention, sending response")
-            await send_formatted_message(client, room.room_id, price_response)
-            return
     
     if should_respond:
         # Try to add to queue (non-blocking) to prevent overload
