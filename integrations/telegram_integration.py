@@ -7,7 +7,7 @@ from typing import Optional
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 from telegram.constants import ParseMode, ChatAction
-from config.settings import TELEGRAM_BOT_TOKEN, TELEGRAM_ALLOWED_USERS, TELEGRAM_ALLOWED_GROUPS, BOT_USERNAME, ENABLE_MEME_GENERATION
+from config.settings import TELEGRAM_BOT_TOKEN, TELEGRAM_ALLOWED_USERS, TELEGRAM_ALLOWED_GROUPS, BOT_USERNAME, ENABLE_MEME_GENERATION, ENABLE_PRICE_TRACKING
 from config.personality import BOT_PERSONALITY
 from modules.llm import get_llm_reply
 from modules.price_tracker import price_tracker
@@ -124,7 +124,8 @@ class TelegramBot:
             "🏓 /ping - Check bot latency\n\n"
             "*Other:*\n"
             "❓ /help - Show this message\n"
-            "👋 /start - Welcome message"
+            "👋 /start - Welcome message\n\n"
+            f"*Note:* For price queries in regular chat, mention my name ({BOT_USERNAME}) along with your query."
         )
         
         await update.message.reply_text(help_text, parse_mode=ParseMode.MARKDOWN)
@@ -273,6 +274,15 @@ class TelegramBot:
         # Store message in history
         self.store_message(chat_id, username, message_text)
         
+        # Check if this is a price query with bot mention
+        message_lower = message_text.lower()
+        if ENABLE_PRICE_TRACKING and BOT_USERNAME.lower() in message_lower:
+            # Try to get price response
+            price_response = await price_tracker.get_price_response(message_text)
+            if price_response:
+                await update.message.reply_text(f"💰 {price_response}", parse_mode=ParseMode.MARKDOWN)
+                return
+        
         # Get conversation context
         context_str = self.get_conversation_context(chat_id)
         
@@ -363,6 +373,7 @@ async def run_telegram_bot():
         print("📝 Commands: /help to see all commands")
         print("💬 Chat: Just send a message to chat")
         print("💰 Price tracking: /price <crypto> or /xmr")
+        print(f"   For inline prices: mention '{BOT_USERNAME}' with your query")
         if ENABLE_MEME_GENERATION:
             print("🎨 Meme generation: /meme <topic> to create memes")
         print("🔍 Web search: /search <query>")

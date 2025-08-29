@@ -6,7 +6,7 @@ from discord.ext import commands
 import asyncio
 from typing import Optional
 import logging
-from config.settings import DISCORD_TOKEN, DISCORD_COMMAND_PREFIX, DISCORD_ALLOWED_GUILDS, BOT_USERNAME, ENABLE_MEME_GENERATION
+from config.settings import DISCORD_TOKEN, DISCORD_COMMAND_PREFIX, DISCORD_ALLOWED_GUILDS, BOT_USERNAME, ENABLE_MEME_GENERATION, ENABLE_PRICE_TRACKING
 from config.personality import BOT_PERSONALITY
 from modules.llm import get_llm_reply
 from modules.price_tracker import price_tracker
@@ -104,6 +104,18 @@ class ChatbotDiscordBot(commands.Bot):
             if not content:
                 await message.reply("Hey! What's up? Ask me something!")
                 return
+            
+            # Check for price queries when bot is mentioned
+            if ENABLE_PRICE_TRACKING:
+                price_response = await price_tracker.get_price_response(content)
+                if price_response:
+                    embed = discord.Embed(
+                        title="💰 Price Information",
+                        description=price_response,
+                        color=discord.Color.green()
+                    )
+                    await message.reply(embed=embed)
+                    return
                 
             # Get conversation context
             context = self.get_conversation_context(message.channel.id)
@@ -176,7 +188,7 @@ class ChatbotCommands(commands.Cog):
         
         embed.add_field(
             name="💬 Chat",
-            value="Just mention me or reply to my messages!",
+            value=f"Just mention me or reply to my messages!\nFor prices, mention me with your query (e.g., @{BOT_USERNAME} XMR USD)",
             inline=False
         )
         
@@ -313,7 +325,7 @@ async def run_discord_bot():
     print(f"✅ Bot Name: {BOT_USERNAME.capitalize()}")
     print("📝 Commands: Use ! prefix (e.g., !help)")
     print("💬 Chat: Mention the bot or reply to its messages")
-    print("💰 Price tracking: !price <crypto> or !xmr")
+    print(f"💰 Price tracking: !price <crypto> or mention bot with query")
     if ENABLE_MEME_GENERATION:
         print("🎨 Meme generation: !meme <topic> to create memes")
     print("🔍 Web search: Ask to search for anything")

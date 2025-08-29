@@ -121,15 +121,6 @@ async def message_callback(client, room: MatrixRoom, event: RoomMessageText):
                 previous_message = replied_event.event.body
                 print(f"[DEBUG] User is replying to bot's message: {previous_message[:50]}...")
     
-    # Check for price requests first (before bot mention check)
-    # BUT skip price checking if this is a reply to the bot
-    if ENABLE_PRICE_TRACKING and not replied_to_bot:
-        price_response = await price_tracker.get_price_response(event.body)
-        if price_response:
-            print(f"[DEBUG] Detected price request, sending response")
-            await send_formatted_message(client, room.room_id, price_response)
-            return
-    
     # Extract the bot's display name and username from its Matrix ID
     # client.user_id is like "@simpletest888:matrix.org"
     bot_localpart = client.user_id.split(':')[0][1:]  # Remove @ and domain to get "simpletest888"
@@ -142,6 +133,14 @@ async def message_callback(client, room: MatrixRoom, event: RoomMessageText):
         bot_localpart.lower() in message_lower or
         replied_to_bot
     )
+    
+    # Check for price requests - now ONLY if bot is mentioned
+    if ENABLE_PRICE_TRACKING and should_respond:
+        price_response = await price_tracker.get_price_response(event.body)
+        if price_response:
+            print(f"[DEBUG] Detected price request with bot mention, sending response")
+            await send_formatted_message(client, room.room_id, price_response)
+            return
     
     if should_respond:
         # Try to add to queue (non-blocking) to prevent overload

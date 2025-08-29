@@ -16,7 +16,8 @@ from config.settings import (
     TWILIO_MESSENGER_PAGE_ID, TWILIO_INSTAGRAM_ACCOUNT_ID,
     TWILIO_WEBHOOK_BASE_URL, TWILIO_WEBHOOK_PORT,
     WHATSAPP_ALLOWED_NUMBERS, MESSENGER_ALLOWED_USERS, INSTAGRAM_ALLOWED_USERS,
-    INTEGRATIONS, MAX_ROOM_HISTORY, ENABLE_PRICE_TRACKING, ENABLE_MEME_GENERATION
+    INTEGRATIONS, MAX_ROOM_HISTORY, ENABLE_PRICE_TRACKING, ENABLE_MEME_GENERATION,
+    BOT_USERNAME
 )
 from modules.llm import get_llm_reply
 from modules.price_tracker import price_tracker
@@ -199,6 +200,13 @@ class TwilioBot:
             if message.startswith('/'):
                 return await self.handle_command(message, sender_id, platform)
             
+            # Check for price queries - require bot name mention
+            message_lower = message.lower()
+            if ENABLE_PRICE_TRACKING and BOT_USERNAME.lower() in message_lower:
+                price_response = await price_tracker.get_price_response(message)
+                if price_response:
+                    return f"💰 {price_response}"
+            
             # Get conversation context
             context = self.get_conversation_context(sender_id, platform)
             
@@ -216,7 +224,7 @@ class TwilioBot:
             )
             
             # Store bot response
-            self.store_message(sender_id, "Nifty", response, platform)
+            self.store_message(sender_id, BOT_USERNAME.capitalize(), response, platform)
             
             return response
             
@@ -252,7 +260,7 @@ class TwilioBot:
     def get_help_text(self, platform: str) -> str:
         """Get platform-specific help text"""
         base_help = (
-            f"👋 Hello! I'm Nifty, your AI assistant on {platform.title()}!\n\n"
+            f"👋 Hello! I'm {BOT_USERNAME.capitalize()}, your AI assistant on {platform.title()}!\n\n"
             "Available commands:\n"
             "/help - Show this help message\n"
             "/stats - Show conversation statistics\n"
@@ -260,7 +268,8 @@ class TwilioBot:
         )
         
         if ENABLE_PRICE_TRACKING:
-            base_help += "/price [crypto] - Get cryptocurrency price (default: XMR)\n"
+            base_help += f"/price [crypto] - Get cryptocurrency price (default: XMR)\n"
+            base_help += f"\nFor inline price queries, mention '{BOT_USERNAME}' with your query.\n"
         
         if ENABLE_MEME_GENERATION:
             base_help += "!meme <topic> - Generate a meme with AI captions\n"
@@ -344,6 +353,9 @@ async def run_twilio_bot():
     
     if ENABLE_MEME_GENERATION:
         logger.info("  Meme generation: !meme <topic> command enabled")
+    
+    if ENABLE_PRICE_TRACKING:
+        logger.info(f"  Price queries: mention '{BOT_USERNAME}' with your query")
     
     # Create and run the bot
     bot = TwilioBot()
