@@ -29,7 +29,8 @@ class ChatbotDiscordBot(commands.Bot):
         super().__init__(
             command_prefix='?',  # Changed from DISCORD_COMMAND_PREFIX to ?
             intents=intents,
-            description=f"{BOT_USERNAME.capitalize()} - Your digital assistant"
+            description=f"{BOT_USERNAME.capitalize()} - Your digital assistant",
+            help_command=None  # Disable default help command to use our custom one
         )
         
         self.conversation_history = {}  # channel_id -> list of messages
