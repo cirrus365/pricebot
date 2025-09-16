@@ -62,6 +62,7 @@ LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openrouter").lower()  # 'openrouter' o
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_URL = os.getenv("OPENROUTER_URL", "https://openrouter.ai/api/v1/chat/completions")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-chat-v3-0324:free")
+OPENROUTER_FALLBACK_MODEL = os.getenv("OPENROUTER_FALLBACK_MODEL", "")  # Optional fallback model
 
 # Ollama config
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")

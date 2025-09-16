@@ -5,6 +5,7 @@ import re
 from datetime import datetime
 from config.settings import (
     LLM_PROVIDER, OPENROUTER_API_KEY, OPENROUTER_URL, OPENROUTER_MODEL,
+    OPENROUTER_FALLBACK_MODEL,
     OLLAMA_URL, OLLAMA_MODEL, OLLAMA_KEEP_ALIVE, OLLAMA_NUM_PREDICT,
     OLLAMA_TEMPERATURE, OLLAMA_TOP_K, OLLAMA_TOP_P, OLLAMA_REPEAT_PENALTY,
     LLM_TIMEOUT, MAX_RETRIES, BASE_RETRY_DELAY, MAX_CONTEXT_LOOKBACK,
@@ -95,9 +96,16 @@ async def call_ollama_api(messages, temperature=0.8):
             print(f"Error calling Ollama API: {e}")
             raise
 
-async def call_openrouter_api(messages, temperature=0.8):
-    """Call OpenRouter API with the given messages"""
+async def call_openrouter_api(messages, temperature=0.8, use_fallback=False):
+    """Call OpenRouter API with the given messages, with optional fallback model"""
     timeout = aiohttp.ClientTimeout(total=LLM_TIMEOUT)
+    
+    # Determine which model to use
+    model_to_use = OPENROUTER_MODEL
+    if use_fallback and OPENROUTER_FALLBACK_MODEL:
+        model_to_use = OPENROUTER_FALLBACK_MODEL
+        print(f"[INFO] Using fallback model: {model_to_use}")
+    
     async with aiohttp.ClientSession(timeout=timeout) as session:
         headers = {
             "Authorization": f"Bearer {OPENROUTER_API_KEY}",
@@ -105,7 +113,7 @@ async def call_openrouter_api(messages, temperature=0.8):
         }
         
         data = {
-            "model": OPENROUTER_MODEL,
+            "model": model_to_use,
             "messages": messages,
             "temperature": temperature,
             "max_tokens": 1000
@@ -118,13 +126,32 @@ async def call_openrouter_api(messages, temperature=0.8):
                     return result["choices"][0]["message"]["content"]
                 else:
                     error_text = await response.text()
-                    print(f"OpenRouter API error: {response.status} - {error_text}")
+                    error_msg = f"OpenRouter API error with model {model_to_use}: {response.status} - {error_text}"
+                    print(error_msg)
+                    
+                    # Check if we should try fallback
+                    if not use_fallback and OPENROUTER_FALLBACK_MODEL and response.status in [429, 500, 502, 503, 504]:
+                        print(f"[INFO] Primary model failed with status {response.status}, attempting fallback...")
+                        return await call_openrouter_api(messages, temperature, use_fallback=True)
+                    
                     return None
         except asyncio.TimeoutError:
-            print(f"[ERROR] OpenRouter request timed out after {LLM_TIMEOUT} seconds")
+            print(f"[ERROR] OpenRouter request timed out after {LLM_TIMEOUT} seconds with model {model_to_use}")
+            
+            # Try fallback on timeout if available
+            if not use_fallback and OPENROUTER_FALLBACK_MODEL:
+                print(f"[INFO] Primary model timed out, attempting fallback...")
+                return await call_openrouter_api(messages, temperature, use_fallback=True)
+            
             raise
         except Exception as e:
-            print(f"Error calling OpenRouter API: {e}")
+            print(f"Error calling OpenRouter API with model {model_to_use}: {e}")
+            
+            # Try fallback on other errors if available
+            if not use_fallback and OPENROUTER_FALLBACK_MODEL:
+                print(f"[INFO] Primary model failed with error, attempting fallback...")
+                return await call_openrouter_api(messages, temperature, use_fallback=True)
+            
             raise
 
 async def get_llm_reply(prompt, context=None, previous_message=None, room_id=None, url_contents=None, client=None):
