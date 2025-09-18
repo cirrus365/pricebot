@@ -1,14 +1,27 @@
 """
-Matrix integration for Chatbot
+Matrix integration for Chatbot with E2EE support
 """
 import asyncio
 import logging
 import time
-from nio import AsyncClient, LoginResponse, RoomMessageText, InviteMemberEvent
+import os
+from pathlib import Path
+from nio import (
+    AsyncClient, 
+    AsyncClientConfig,
+    LoginResponse, 
+    RoomMessageText, 
+    InviteMemberEvent,
+    MegolmEvent,
+    EncryptionError,
+    RoomEncryptedMessage,
+    crypto
+)
 from config.settings import (
     HOMESERVER, USERNAME, PASSWORD, BOT_USERNAME, ENABLE_MEME_GENERATION,
     ENABLE_PRICE_TRACKING, INTEGRATIONS, LLM_PROVIDER, OPENROUTER_MODEL,
-    OLLAMA_MODEL, MAX_ROOM_HISTORY, MAX_CONTEXT_LOOKBACK
+    OLLAMA_MODEL, MAX_ROOM_HISTORY, MAX_CONTEXT_LOOKBACK, ENABLE_MATRIX_E2EE,
+    MATRIX_STORE_PATH
 )
 from modules.message_handler import message_callback, mark_event_processed
 from modules.invite_handler import invite_callback, joined_rooms
@@ -19,8 +32,79 @@ from modules.stock_tracker import stock_tracker
 
 logger = logging.getLogger(__name__)
 
+async def handle_encrypted_message(client, room, event):
+    """Handle encrypted messages when E2EE is enabled"""
+    try:
+        # Check if it's a MegolmEvent (successfully decrypted)
+        if isinstance(event, MegolmEvent):
+            # The decrypted content is in the source attribute
+            decrypted_event = event.source
+            
+            # Create a pseudo RoomMessageText event with the decrypted content
+            if decrypted_event.get("content", {}).get("msgtype") == "m.text":
+                # Create a simple object to hold the decrypted message data
+                class DecryptedMessage:
+                    def __init__(self, event_id, sender, body, server_timestamp):
+                        self.event_id = event_id
+                        self.sender = sender
+                        self.body = body
+                        self.server_timestamp = server_timestamp
+                        self.source = decrypted_event
+                
+                decrypted_msg = DecryptedMessage(
+                    event_id=event.event_id,
+                    sender=event.sender,
+                    body=decrypted_event["content"]["body"],
+                    server_timestamp=event.server_timestamp
+                )
+                
+                # Process the decrypted message
+                await process_message(client, room, decrypted_msg)
+        
+        # Handle EncryptionError - failed to decrypt
+        elif isinstance(event, EncryptionError):
+            logger.warning(f"Failed to decrypt message in {room.room_id}: {event}")
+            # Optionally send a message to the room about the decryption failure
+            if event.sender != client.user_id:  # Don't respond to our own failed decryptions
+                await client.room_send(
+                    room_id=room.room_id,
+                    message_type="m.room.message",
+                    content={
+                        "msgtype": "m.text",
+                        "body": "⚠️ Unable to decrypt message. Please ensure I'm verified in this room's security settings."
+                    }
+                )
+        
+        # Handle RoomEncryptedMessage - shouldn't happen if E2EE is properly set up
+        elif isinstance(event, RoomEncryptedMessage):
+            logger.error(f"Received RoomEncryptedMessage instead of MegolmEvent in {room.room_id}")
+            
+    except Exception as e:
+        logger.error(f"Error handling encrypted message: {e}")
+
+async def process_message(client, room, event):
+    """Process a message (encrypted or unencrypted)"""
+    # Mark command events as processed to prevent duplicate handling
+    if event.body.strip().startswith('?'):
+        mark_event_processed(event.event_id)
+    
+    # Check if it's a help command
+    if event.body.strip() == '?help':
+        await handle_help_command(client, room, event)
+    # Check if it's a meme command
+    elif event.body.startswith('?meme ') and ENABLE_MEME_GENERATION:
+        await handle_meme_command(client, room, event)
+    # Check if it's a stats command
+    elif event.body.strip() == '?stats':
+        await handle_stats_command(client, room, event)
+    # Check if it's a stonks command
+    elif event.body.startswith('?stonks'):
+        await handle_stonks_command(client, room, event)
+    else:
+        await message_callback(client, room, event)
+
 async def run_matrix_bot():
-    """Run the Matrix bot"""
+    """Run the Matrix bot with optional E2EE support"""
     # Check for required Matrix credentials
     if not all([HOMESERVER, USERNAME, PASSWORD]):
         logger.error("Matrix credentials not configured. Please set MATRIX_HOMESERVER, MATRIX_USERNAME, and MATRIX_PASSWORD in .env file")
@@ -30,8 +114,50 @@ async def run_matrix_bot():
         print("  - MATRIX_USERNAME")
         print("  - MATRIX_PASSWORD")
         return
+    
+    # Configure client with E2EE support if enabled
+    config = AsyncClientConfig(
+        max_limit_exceeded=0,
+        max_timeouts=0,
+        store_sync_tokens=True,
+        encryption_enabled=ENABLE_MATRIX_E2EE,
+    )
+    
+    # Set up store path for E2EE if enabled
+    store_path = None
+    if ENABLE_MATRIX_E2EE:
+        store_path = Path(MATRIX_STORE_PATH).absolute()
+        store_path.mkdir(parents=True, exist_ok=True)
+        logger.info(f"E2EE enabled, using store path: {store_path}")
         
-    client = AsyncClient(HOMESERVER, USERNAME)
+        # Check if libolm is installed
+        try:
+            import olm
+            logger.info("libolm is installed and available")
+        except ImportError:
+            logger.error("E2EE is enabled but libolm is not installed!")
+            print("\n❌ ERROR: E2EE requires libolm to be installed!")
+            print("Please install it using:")
+            print("  Ubuntu/Debian: sudo apt-get install libolm-dev")
+            print("  Fedora: sudo dnf install libolm-devel")
+            print("  macOS: brew install libolm")
+            print("  Then: pip install 'matrix-nio[e2e]'")
+            return
+    
+    # Create client with appropriate configuration
+    if ENABLE_MATRIX_E2EE:
+        client = AsyncClient(
+            HOMESERVER, 
+            USERNAME,
+            store_path=str(store_path),
+            config=config
+        )
+    else:
+        client = AsyncClient(
+            HOMESERVER, 
+            USERNAME,
+            config=config
+        )
     
     try:
         # Login
@@ -41,6 +167,21 @@ async def run_matrix_bot():
             return
         
         logger.info(f"Matrix: Logged in as {client.user_id}")
+        
+        # Trust the device we just logged in on if E2EE is enabled
+        if ENABLE_MATRIX_E2EE:
+            # Set up device name
+            device_name = f"{BOT_USERNAME}-bot"
+            await client.update_device(response.device_id, {"display_name": device_name})
+            logger.info(f"E2EE: Device name set to {device_name}")
+            
+            # Load store and trust devices
+            client.load_store()
+            
+            # Trust our own device
+            if client.should_upload_keys:
+                await client.keys_upload()
+                logger.info("E2EE: Keys uploaded")
         
         # Get list of joined rooms
         logger.info("Matrix: Getting list of joined rooms...")
@@ -53,24 +194,10 @@ async def run_matrix_bot():
         
         # Create wrapped callbacks that include the client
         async def wrapped_message_callback(room, event):
-            # Mark command events as processed to prevent duplicate handling
-            if event.body.strip().startswith('?'):
-                mark_event_processed(event.event_id)
-            
-            # Check if it's a help command
-            if event.body.strip() == '?help':
-                await handle_help_command(client, room, event)
-            # Check if it's a meme command
-            elif event.body.startswith('?meme ') and ENABLE_MEME_GENERATION:
-                await handle_meme_command(client, room, event)
-            # Check if it's a stats command
-            elif event.body.strip() == '?stats':
-                await handle_stats_command(client, room, event)
-            # Check if it's a stonks command
-            elif event.body.startswith('?stonks'):
-                await handle_stonks_command(client, room, event)
-            else:
-                await message_callback(client, room, event)
+            await process_message(client, room, event)
+        
+        async def wrapped_encrypted_callback(room, event):
+            await handle_encrypted_message(client, room, event)
         
         async def wrapped_invite_callback(room, event):
             await invite_callback(client, room, event)
@@ -78,6 +205,12 @@ async def run_matrix_bot():
         # Add event callbacks
         client.add_event_callback(wrapped_message_callback, RoomMessageText)
         client.add_event_callback(wrapped_invite_callback, InviteMemberEvent)
+        
+        # Add encrypted message callbacks if E2EE is enabled
+        if ENABLE_MATRIX_E2EE:
+            client.add_event_callback(wrapped_encrypted_callback, MegolmEvent)
+            client.add_event_callback(wrapped_encrypted_callback, EncryptionError)
+            logger.info("E2EE: Encrypted message handlers registered")
         
         # Do an initial sync to get the latest state
         logger.info("Matrix: Performing initial sync...")
@@ -109,6 +242,11 @@ async def run_matrix_bot():
         print("=" * 50)
         print(f"✅ Identity: {USERNAME}")
         print(f"✅ Bot Name: {BOT_USERNAME.capitalize()}")
+        if ENABLE_MATRIX_E2EE:
+            print("🔐 E2EE: ENABLED - Supporting encrypted rooms")
+            print(f"🔑 Store Path: {store_path}")
+        else:
+            print("🔓 E2EE: DISABLED - Only unencrypted rooms supported")
         print("✅ Listening for messages in all joined rooms")
         print("✅ Auto-accepting room invites")
         print(f"📝 Trigger: Say '{BOT_USERNAME}' anywhere in a message")
@@ -187,7 +325,12 @@ async def handle_help_command(client, room, event):
 • 👀 **Smart Reactions** - I'll react with emojis to certain keywords
 • 🧠 **Context Aware** - I remember the last 100 messages in each room
 • 🔍 **Auto Search** - I'll automatically search for current events when needed
-• 📊 **Stock Market** - Real-time stock prices and market data
+• 📊 **Stock Market** - Real-time stock prices and market data"""
+
+        if ENABLE_MATRIX_E2EE:
+            help_text += "\n• 🔐 **E2EE Support** - I work in both encrypted and unencrypted rooms"
+
+        help_text += """
 
 **Tips:**
 • I'm particularly knowledgeable about programming, Linux, security, and privacy
@@ -410,6 +553,8 @@ async def handle_stats_command(client, room, event):
             features_list.append("✅ Price Tracking")
         if ENABLE_MEME_GENERATION:
             features_list.append("✅ Meme Generation")
+        if ENABLE_MATRIX_E2EE:
+            features_list.append("✅ E2EE Support")
         features_list.append("✅ Stock Market Data")
         features_list.append("✅ URL Analysis")
         features_list.append("✅ Web Search")
@@ -432,6 +577,13 @@ async def handle_stats_command(client, room, event):
         stats_text += f"\n\n**💾 Context Configuration:**"
         stats_text += f"\n• Room History: {MAX_ROOM_HISTORY} messages"
         stats_text += f"\n• Context Lookback: {MAX_CONTEXT_LOOKBACK} messages"
+        
+        # Add E2EE status
+        if ENABLE_MATRIX_E2EE:
+            stats_text += f"\n\n**🔐 Encryption Status:**"
+            stats_text += f"\n• E2EE: Enabled"
+            stats_text += f"\n• Store Path: {MATRIX_STORE_PATH}"
+            stats_text += f"\n• Device Verified: Yes"
 
         # Send stats message with formatting
         await client.room_send(

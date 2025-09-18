@@ -23,6 +23,10 @@ HOMESERVER = os.getenv("MATRIX_HOMESERVER")
 USERNAME = os.getenv("MATRIX_USERNAME")
 PASSWORD = os.getenv("MATRIX_PASSWORD")
 
+# Matrix E2EE Settings
+ENABLE_MATRIX_E2EE = os.getenv("ENABLE_MATRIX_E2EE", "true").lower() == "true"
+MATRIX_STORE_PATH = os.getenv("MATRIX_STORE_PATH", "./matrix_store")
+
 # Matrix Auto-Invite Settings
 ENABLE_AUTO_INVITE = os.getenv("ENABLE_AUTO_INVITE", "true").lower() == "true"
 ALLOWED_INVITE_USERS = os.getenv("ALLOWED_INVITE_USERS", "").split(",") if os.getenv("ALLOWED_INVITE_USERS") else []
