@@ -33,11 +33,12 @@ meme_generator = None
 stats_tracker = None
 stock_tracker = None
 world_clock = None
+price_tracker = None
 
 def initialize_handlers():
     """Initialize handlers after module is loaded to avoid circular imports"""
     global message_callback, mark_event_processed, invite_callback, joined_rooms
-    global cleanup_old_context, meme_generator, stats_tracker, stock_tracker, world_clock
+    global cleanup_old_context, meme_generator, stats_tracker, stock_tracker, world_clock, price_tracker
     
     from modules.message_handler import message_callback as mc, mark_event_processed as mep
     from modules.invite_handler import invite_callback as ic, joined_rooms as jr
@@ -46,6 +47,7 @@ def initialize_handlers():
     from modules.stats_tracker import stats_tracker as st
     from modules.stock_tracker import stock_tracker as stk
     from modules.world_clock import world_clock as wc
+    from modules.price_tracker import price_tracker as pt
     
     message_callback = mc
     mark_event_processed = mep
@@ -56,6 +58,7 @@ def initialize_handlers():
     stats_tracker = st
     stock_tracker = stk
     world_clock = wc
+    price_tracker = pt
 
 async def process_message(client, room, event):
     """Process a message"""
@@ -73,6 +76,9 @@ async def process_message(client, room, event):
     # Check if it's a clock command
     elif event.body.startswith('?clock'):
         await handle_clock_command(client, room, event)
+    # Check if it's a price command
+    elif event.body.startswith('?price'):
+        await handle_price_command(client, room, event)
     # Check if it's a meme command
     elif event.body.startswith('?meme ') and ENABLE_MEME_GENERATION:
         await handle_meme_command(client, room, event)
@@ -353,6 +359,70 @@ async def handle_clock_command(client, room, event):
             {
                 "msgtype": "m.text",
                 "body": "Sorry, I couldn't get the time for that location. Please try again."
+            }
+        )
+    finally:
+        await client.room_typing(room.room_id, typing_state=False)
+
+async def handle_price_command(client, room, event):
+    """Handle price command for Matrix"""
+    try:
+        # Track command usage
+        stats_tracker.record_command_usage('?price')
+        stats_tracker.record_feature_usage('price_tracking')
+        
+        # Send typing indicator
+        await client.room_typing(room.room_id, typing_state=True)
+        
+        # Parse the command - remove the ?price prefix
+        parts = event.body.strip().split(maxsplit=1)
+        query = parts[1] if len(parts) > 1 else "XMR"  # Default to XMR if no argument
+        
+        # Get price response
+        response = await price_tracker.get_price_response(query)
+        
+        if not response:
+            # If the price tracker couldn't parse it, provide help
+            response = """💰 **Price Command Usage**
+
+**Cryptocurrency prices:**
+• `?price btc` - Bitcoin in USD
+• `?price xmr usd` - Monero in USD
+• `?price eth eur` - Ethereum in EUR
+
+**Fiat exchange rates:**
+• `?price usd eur` - USD to EUR rate
+• `?price 100 usd eur` - Convert 100 USD to EUR
+
+**Supported cryptos:** BTC, ETH, XMR, LTC, DOGE, ADA, DOT, LINK, UNI, SOL, MATIC, AVAX, ATOM, XRP, BNB and more
+
+**Supported fiats:** USD, EUR, GBP, JPY, CNY, INR, KRW, RUB, CAD, AUD, CHF, SEK, NOK, DKK, PLN, CZK, NZD, MXN, BRL, ZAR, HKD, SGD, THB, TRY and more"""
+        
+        # Send the response with formatting
+        await send_message(
+            client,
+            room.room_id,
+            {
+                "msgtype": "m.text",
+                "body": response.replace("**", "").replace("•", "-"),  # Plain text fallback
+                "format": "org.matrix.custom.html",
+                "formatted_body": response.replace("**", "<strong>").replace("**", "</strong>")
+                                         .replace("•", "•")
+                                         .replace("\n", "<br/>")
+            }
+        )
+        
+        # Track sent message
+        stats_tracker.record_message_sent(room.room_id)
+        
+    except Exception as e:
+        logger.error(f"Error handling price command: {e}")
+        await send_message(
+            client,
+            room.room_id,
+            {
+                "msgtype": "m.text",
+                "body": "Sorry, I couldn't fetch price data right now. Please try again later."
             }
         )
     finally:
