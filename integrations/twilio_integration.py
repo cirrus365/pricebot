@@ -24,6 +24,7 @@ from modules.price_tracker import price_tracker
 from modules.stock_tracker import stock_tracker
 from modules.web_search import search_with_jina, needs_web_search
 from modules.meme_generator import meme_generator
+from modules.world_clock import world_clock
 from utils.helpers import extract_urls_from_message, detect_code_in_message
 
 logger = logging.getLogger(__name__)
@@ -188,6 +189,11 @@ class TwilioBot:
         self.store_message(sender_id, sender_id, message, platform)
         
         try:
+            # Check for clock command
+            if message.startswith('?clock'):
+                location = message[6:].strip() if len(message) > 6 else ""
+                return await world_clock.handle_clock_command(location)
+            
             # Check for meme command
             if message.startswith('?meme ') and ENABLE_MEME_GENERATION:
                 # Convert ?meme to !meme for the meme generator
@@ -236,6 +242,10 @@ class TwilioBot:
         if cmd in ['?help', '?start']:
             return self.get_help_text(platform)
         
+        elif cmd == '?clock':
+            location = ' '.join(cmd_parts[1:]) if len(cmd_parts) > 1 else ""
+            return await world_clock.handle_clock_command(location)
+        
         elif cmd == '?price' and ENABLE_PRICE_TRACKING:
             if len(cmd_parts) > 1:
                 query = ' '.join(cmd_parts[1:])
@@ -274,6 +284,8 @@ class TwilioBot:
             f"👋 Hello! I'm {BOT_USERNAME.capitalize()}, your AI assistant on {platform.title()}!\n\n"
             "Available commands:\n"
             "?help - Show this help message\n"
+            "?clock <city/country> - Get world time\n"
+            "?clock - Get current UTC time\n"
             "?stats - Show conversation statistics\n"
             "?reset - Clear conversation history\n"
         )
@@ -364,6 +376,8 @@ async def run_twilio_bot():
         logger.info(f"  Messenger: {TWILIO_WEBHOOK_BASE_URL}/messenger")
     if instagram_enabled:
         logger.info(f"  Instagram: {TWILIO_WEBHOOK_BASE_URL}/instagram")
+    
+    logger.info("  World clock: ?clock <city/country> for world time")
     
     if ENABLE_MEME_GENERATION:
         logger.info("  Meme generation: ?meme <topic> command enabled")

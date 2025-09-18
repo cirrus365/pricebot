@@ -32,11 +32,12 @@ cleanup_old_context = None
 meme_generator = None
 stats_tracker = None
 stock_tracker = None
+world_clock = None
 
 def initialize_handlers():
     """Initialize handlers after module is loaded to avoid circular imports"""
     global message_callback, mark_event_processed, invite_callback, joined_rooms
-    global cleanup_old_context, meme_generator, stats_tracker, stock_tracker
+    global cleanup_old_context, meme_generator, stats_tracker, stock_tracker, world_clock
     
     from modules.message_handler import message_callback as mc, mark_event_processed as mep
     from modules.invite_handler import invite_callback as ic, joined_rooms as jr
@@ -44,6 +45,7 @@ def initialize_handlers():
     from modules.meme_generator import meme_generator as mg
     from modules.stats_tracker import stats_tracker as st
     from modules.stock_tracker import stock_tracker as stk
+    from modules.world_clock import world_clock as wc
     
     message_callback = mc
     mark_event_processed = mep
@@ -53,6 +55,7 @@ def initialize_handlers():
     meme_generator = mg
     stats_tracker = st
     stock_tracker = stk
+    world_clock = wc
 
 async def process_message(client, room, event):
     """Process a message"""
@@ -67,6 +70,9 @@ async def process_message(client, room, event):
     # Check if it's a help command
     if event.body.strip() == '?help':
         await handle_help_command(client, room, event)
+    # Check if it's a clock command
+    elif event.body.startswith('?clock'):
+        await handle_clock_command(client, room, event)
     # Check if it's a meme command
     elif event.body.startswith('?meme ') and ENABLE_MEME_GENERATION:
         await handle_meme_command(client, room, event)
@@ -195,6 +201,7 @@ async def run_matrix_bot():
         print(f"📊 Summary: '{BOT_USERNAME} summary' for comprehensive chat analysis")
         print("📚 Help: ?help to see all available commands")
         print("📈 Stats: ?stats to see bot statistics")
+        print("🕐 Clock: ?clock <city/country> for world time")
         print("💰 Price: ?price <crypto> [currency] for crypto/fiat prices")
         print("📊 Stocks: ?stonks <ticker> for stock market data")
         if ENABLE_MEME_GENERATION:
@@ -239,6 +246,11 @@ async def handle_help_command(client, room, event):
 • `{BOT_USERNAME} !reset` - Clear conversation context for this room
 • `{BOT_USERNAME} summary` - Get a comprehensive analysis of recent chat
 
+**Time & Date:**
+• `?clock <city/country>` - Get current time for a location
+• `?clock` - Get current UTC time
+• Examples: `?clock paris`, `?clock tokyo`, `?clock usa`
+
 **Price & Finance:**
 • `?price <crypto> [currency]` - Get cryptocurrency prices
 • `?price <from_currency> <to_currency>` - Get fiat exchange rates
@@ -264,6 +276,7 @@ async def handle_help_command(client, room, event):
 • 🧠 **Context Aware** - I remember the last 100 messages in each room
 • 🔍 **Auto Search** - I'll automatically search for current events when needed
 • 📊 **Stock Market** - Real-time stock prices and market data
+• 🕐 **World Clock** - Get time for any city or country
 
 **Tips:**
 • I'm particularly knowledgeable about programming, Linux, security, and privacy
@@ -297,6 +310,53 @@ Need more help? Just ask me anything!"""
                 "body": "Sorry, I couldn't display the help message. Please try again."
             }
         )
+
+async def handle_clock_command(client, room, event):
+    """Handle world clock command for Matrix"""
+    try:
+        # Track command usage
+        stats_tracker.record_command_usage('?clock')
+        stats_tracker.record_feature_usage('world_clock')
+        
+        # Send typing indicator
+        await client.room_typing(room.room_id, typing_state=True)
+        
+        # Parse the command
+        parts = event.body.strip().split(maxsplit=1)
+        location = parts[1] if len(parts) > 1 else ""
+        
+        # Get time for location
+        response = await world_clock.handle_clock_command(location)
+        
+        # Send the response with formatting
+        await send_message(
+            client,
+            room.room_id,
+            {
+                "msgtype": "m.text",
+                "body": response.replace("**", "").replace("•", "-"),  # Plain text fallback
+                "format": "org.matrix.custom.html",
+                "formatted_body": response.replace("**", "<strong>").replace("**", "</strong>")
+                                         .replace("•", "•")
+                                         .replace("\n", "<br/>")
+            }
+        )
+        
+        # Track sent message
+        stats_tracker.record_message_sent(room.room_id)
+        
+    except Exception as e:
+        logger.error(f"Error handling clock command: {e}")
+        await send_message(
+            client,
+            room.room_id,
+            {
+                "msgtype": "m.text",
+                "body": "Sorry, I couldn't get the time for that location. Please try again."
+            }
+        )
+    finally:
+        await client.room_typing(room.room_id, typing_state=False)
 
 async def handle_meme_command(client, room, event):
     """Handle meme generation command for Matrix"""
@@ -486,6 +546,7 @@ async def handle_stats_command(client, room, event):
             features_list.append("✅ Price Tracking")
         if ENABLE_MEME_GENERATION:
             features_list.append("✅ Meme Generation")
+        features_list.append("✅ World Clock")
         features_list.append("✅ Stock Market Data")
         features_list.append("✅ URL Analysis")
         features_list.append("✅ Web Search")

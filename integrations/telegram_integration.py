@@ -14,6 +14,7 @@ from modules.price_tracker import price_tracker
 from modules.stock_tracker import stock_tracker
 from modules.web_search import search_with_jina, fetch_url_content
 from modules.meme_generator import meme_generator
+from modules.world_clock import world_clock
 from utils.formatting import format_code_blocks
 from utils.helpers import extract_urls_from_message, detect_code_in_message
 
@@ -81,6 +82,7 @@ class TelegramBot:
             f"👋 Hey! I'm {BOT_USERNAME.capitalize()}, your digital assistant!\n\n"
             "Here's what I can do:\n"
             "💬 Just chat with me normally\n"
+            "🕐 /clock <city/country> - Get world time\n"
             "💰 /price <crypto> [currency] - Get prices\n"
             "📊 /stonks <ticker> - Get stock market data\n"
             "🔍 /search <query> - Search the web\n"
@@ -108,6 +110,9 @@ class TelegramBot:
             "*Chat Commands:*\n"
             "💬 Just send me a message to chat!\n"
             "/reset - Clear conversation history\n\n"
+            "*Time & Date:*\n"
+            "🕐 /clock <city/country> - Get current time for a location\n"
+            "/clock - Get current UTC time\n\n"
             "*Price Commands:*\n"
             "💰 /price <crypto> [currency] - Get cryptocurrency price\n"
             "/price <from> <to> - Get exchange rate\n"
@@ -134,6 +139,26 @@ class TelegramBot:
         )
         
         await update.message.reply_text(help_text, parse_mode=ParseMode.MARKDOWN)
+        
+    async def clock_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /clock command"""
+        if not self.is_authorized(update):
+            await update.message.reply_text("❌ Sorry, you're not authorized to use this bot.")
+            return
+            
+        # Send typing indicator
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+        
+        # Get location from command arguments
+        location = " ".join(context.args) if context.args else ""
+        
+        # Get time for location
+        response = await world_clock.handle_clock_command(location)
+        
+        # Format response for Telegram markdown
+        response = response.replace("**", "*")  # Convert bold markers
+        
+        await update.message.reply_text(response, parse_mode=ParseMode.MARKDOWN)
         
     async def stonks_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /stonks command"""
@@ -374,6 +399,7 @@ async def run_telegram_bot():
         # Add command handlers
         application.add_handler(CommandHandler("start", bot.start_command))
         application.add_handler(CommandHandler("help", bot.help_command))
+        application.add_handler(CommandHandler("clock", bot.clock_command))
         application.add_handler(CommandHandler("price", bot.price_command))
         application.add_handler(CommandHandler("xmr", bot.xmr_command))
         application.add_handler(CommandHandler("stonks", bot.stonks_command))
@@ -398,6 +424,7 @@ async def run_telegram_bot():
         print(f"✅ Bot Name: {BOT_USERNAME.capitalize()}")
         print("📝 Commands: /help to see all commands")
         print("💬 Chat: Just send a message to chat")
+        print("🕐 World clock: /clock <city/country> for world time")
         print("💰 Price tracking: /price <crypto> [currency] or /price <from> <to>")
         print("📊 Stock market: /stonks <ticker> for stock data")
         if ENABLE_MEME_GENERATION:

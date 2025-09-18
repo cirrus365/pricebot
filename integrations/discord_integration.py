@@ -13,6 +13,7 @@ from modules.price_tracker import price_tracker
 from modules.stock_tracker import stock_tracker
 from modules.web_search import search_with_jina, fetch_url_content
 from modules.meme_generator import meme_generator
+from modules.world_clock import world_clock
 from utils.formatting import format_code_blocks
 from utils.helpers import extract_urls_from_message, detect_code_in_message
 
@@ -183,6 +184,12 @@ class ChatbotCommands(commands.Cog):
         )
         
         embed.add_field(
+            name="🕐 World Clock",
+            value="`?clock <city/country>` - Get current time for a location\n`?clock` - Get current UTC time",
+            inline=False
+        )
+        
+        embed.add_field(
             name="💰 Price Commands",
             value="`?price <crypto> [currency]` - Get crypto prices\n`?price <from> <to>` - Get exchange rates\n`?xmr` - Get Monero price",
             inline=False
@@ -215,6 +222,22 @@ class ChatbotCommands(commands.Cog):
         
         embed.set_footer(text=f"Made with 💜 by the {BOT_USERNAME.capitalize()} team")
         await ctx.send(embed=embed)
+        
+    @commands.command(name='clock', help='Get current time for a city or country')
+    async def clock_command(self, ctx, *, location: str = None):
+        """Get world clock time for a location"""
+        async with ctx.typing():
+            # Get time for location
+            response = await world_clock.handle_clock_command(location or "")
+            
+            # Create embed
+            embed = discord.Embed(
+                title="🕐 World Clock",
+                description=response,
+                color=discord.Color.blue()
+            )
+            
+            await ctx.send(embed=embed)
         
     @commands.command(name='stonks', help='Get stock market information')
     async def stonks_command(self, ctx, *, ticker: str = None):
@@ -341,6 +364,7 @@ async def run_discord_bot():
     print(f"✅ Bot Name: {BOT_USERNAME.capitalize()}")
     print("📝 Commands: Use ? prefix (e.g., ?help)")
     print("💬 Chat: Mention the bot or reply to its messages")
+    print("🕐 World clock: ?clock <city/country> for world time")
     print(f"💰 Price tracking: ?price <crypto> [currency] or ?price <from> <to>")
     print("📊 Stock market: ?stonks <ticker> for stock data")
     if ENABLE_MEME_GENERATION:
