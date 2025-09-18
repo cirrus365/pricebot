@@ -15,8 +15,7 @@ from nio import (
     MegolmEvent,
     EncryptionError,
     MatrixRoom,
-    JoinResponse,
-    RoomEncryptedMessage
+    JoinResponse
 )
 from config.settings import (
     HOMESERVER, USERNAME, PASSWORD, BOT_USERNAME, ENABLE_MEME_GENERATION,
@@ -66,7 +65,7 @@ async def handle_encrypted_message(client, room: MatrixRoom, event):
             logger.warning(f"Failed to decrypt message in {room.room_id}: {event.description}")
             return
         
-        # For MegolmEvent and RoomEncryptedMessage, the decrypted content is in the source attribute
+        # For MegolmEvent, the decrypted content is in the source attribute
         if hasattr(event, 'source') and event.source.get("content", {}).get("msgtype") == "m.text":
             body = event.source["content"].get("body", "")
             
@@ -266,7 +265,6 @@ async def run_matrix_bot():
         # Add encrypted message callbacks if E2EE is enabled
         if ENABLE_MATRIX_E2EE:
             client.add_event_callback(wrapped_encrypted_callback, MegolmEvent)
-            client.add_event_callback(wrapped_encrypted_callback, RoomEncryptedMessage)
             client.add_event_callback(wrapped_encrypted_callback, EncryptionError)
             logger.info("E2EE: Encrypted message handlers registered")
         
