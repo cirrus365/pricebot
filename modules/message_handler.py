@@ -12,6 +12,7 @@ from modules.reactions import maybe_react
 from modules.web_search import fetch_url_content
 from modules.llm import get_llm_reply_with_retry
 from modules.price_tracker import price_tracker
+from modules.stats_tracker import stats_tracker
 
 # Create a request queue to prevent overload
 request_queue = Queue(maxsize=MAX_QUEUE_SIZE)
@@ -64,11 +65,16 @@ async def send_formatted_message(client, room_id, reply_text):
         "formatted_body": formatted_body.strip()
     }
     
-    return await client.room_send(
+    result = await client.room_send(
         room_id=room_id,
         message_type="m.room.message",
         content=content
     )
+    
+    # Track sent message
+    stats_tracker.record_message_sent(room_id)
+    
+    return result
 
 async def message_callback(client, room: MatrixRoom, event: RoomMessageText):
     """Handle incoming messages"""
@@ -76,6 +82,9 @@ async def message_callback(client, room: MatrixRoom, event: RoomMessageText):
     print(f"[DEBUG] Room ID: {room.room_id}")
     print(f"[DEBUG] Sender: {event.sender}, Bot ID: {client.user_id}")
     print(f"[DEBUG] Message: {event.body}")
+    
+    # Track received message (before filtering)
+    stats_tracker.record_message_received(room.room_id, event.sender, event.body)
     
     # Ignore our own messages
     if event.sender == client.user_id:
@@ -108,6 +117,9 @@ async def message_callback(client, room: MatrixRoom, event: RoomMessageText):
         command_parts = event.body.strip().split()
         command = command_parts[0].lower()
         
+        # Track command usage
+        stats_tracker.record_command_usage(command)
+        
         # Handle ?price command
         if command == '?price' and ENABLE_PRICE_TRACKING:
             if len(command_parts) >= 2:
@@ -117,6 +129,7 @@ async def message_callback(client, room: MatrixRoom, event: RoomMessageText):
                 if price_response:
                     print(f"[DEBUG] Processing ?price command: {price_query}")
                     await send_formatted_message(client, room.room_id, price_response)
+                    stats_tracker.record_feature_usage('price_tracking')
                     return
             else:
                 await client.room_send(
@@ -131,6 +144,7 @@ async def message_callback(client, room: MatrixRoom, event: RoomMessageText):
         
         # ?help command is handled in matrix_integration.py
         # ?meme command is handled in matrix_integration.py
+        # ?stats command is handled in matrix_integration.py
         # Let those handlers process these commands
         return
     
@@ -214,6 +228,7 @@ async def message_callback(client, room: MatrixRoom, event: RoomMessageText):
         
         if urls_in_message:
             print(f"[DEBUG] Found URLs in message: {urls_in_message}")
+            stats_tracker.record_feature_usage('url_analysis')
             
             # Send typing notification while fetching URLs
             await client.room_typing(room.room_id, True)
@@ -241,6 +256,10 @@ async def message_callback(client, room: MatrixRoom, event: RoomMessageText):
                 room_id=room.room_id,
                 url_contents=url_contents
             )
+            
+            # Track if web search was used (check for search indicators in response)
+            if "searched for" in reply.lower() or "search results" in reply.lower():
+                stats_tracker.record_feature_usage('web_search')
             
             # Final safety check
             if any(word.lower() in reply.lower() for word in FILTERED_WORDS):

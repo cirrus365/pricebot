@@ -4,11 +4,16 @@ Matrix integration for Chatbot
 import asyncio
 import logging
 from nio import AsyncClient, LoginResponse, RoomMessageText, InviteMemberEvent
-from config.settings import HOMESERVER, USERNAME, PASSWORD, BOT_USERNAME, ENABLE_MEME_GENERATION
+from config.settings import (
+    HOMESERVER, USERNAME, PASSWORD, BOT_USERNAME, ENABLE_MEME_GENERATION,
+    ENABLE_PRICE_TRACKING, INTEGRATIONS, LLM_PROVIDER, OPENROUTER_MODEL,
+    OLLAMA_MODEL, MAX_ROOM_HISTORY, MAX_CONTEXT_LOOKBACK
+)
 from modules.message_handler import message_callback
 from modules.invite_handler import invite_callback, joined_rooms
 from modules.cleanup import cleanup_old_context
 from modules.meme_generator import meme_generator
+from modules.stats_tracker import stats_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +46,7 @@ async def run_matrix_bot():
         if hasattr(joined_rooms_response, 'rooms'):
             for room_id in joined_rooms_response.rooms:
                 joined_rooms.add(room_id)
+                stats_tracker.record_room_join(room_id)
                 logger.info(f"Matrix: Already in room: {room_id}")
         
         # Create wrapped callbacks that include the client
@@ -51,6 +57,9 @@ async def run_matrix_bot():
             # Check if it's a meme command
             elif event.body.startswith('?meme ') and ENABLE_MEME_GENERATION:
                 await handle_meme_command(client, room, event)
+            # Check if it's a stats command
+            elif event.body.strip() == '?stats':
+                await handle_stats_command(client, room, event)
             else:
                 await message_callback(client, room, event)
         
@@ -83,6 +92,7 @@ async def run_matrix_bot():
         print(f"🧹 Reset: '{BOT_USERNAME} !reset' to clear context")
         print(f"📊 Summary: '{BOT_USERNAME} summary' for comprehensive chat analysis")
         print("📚 Help: ?help to see all available commands")
+        print("📈 Stats: ?stats to see bot statistics")
         print("💰 Price: ?price <crypto> [currency] for crypto/fiat prices")
         if ENABLE_MEME_GENERATION:
             print("🎨 Meme generation: ?meme <topic> to create memes")
@@ -111,11 +121,15 @@ async def run_matrix_bot():
 async def handle_help_command(client, room, event):
     """Handle help command for Matrix"""
     try:
+        # Track command usage
+        stats_tracker.record_command_usage('?help')
+        
         # Build help message
         help_text = f"""📚 **{BOT_USERNAME.capitalize()} Bot - Available Commands**
 
 **General Commands:**
 • `?help` - Show this help message
+• `?stats` - Show bot statistics and enabled features
 • `{BOT_USERNAME} <message>` - Chat with me by mentioning my name
 • Reply to any of my messages to continue the conversation
 • `{BOT_USERNAME} !reset` - Clear conversation context for this room
@@ -177,6 +191,10 @@ Need more help? Just ask me anything!"""
 async def handle_meme_command(client, room, event):
     """Handle meme generation command for Matrix"""
     try:
+        # Track command usage
+        stats_tracker.record_command_usage('?meme')
+        stats_tracker.record_feature_usage('meme_generation')
+        
         # Send typing indicator
         await client.room_typing(room.room_id, typing_state=True)
         
@@ -198,6 +216,9 @@ async def handle_meme_command(client, room, event):
                     "formatted_body": f'<p>{caption}</p><p><a href="{meme_url}">{meme_url}</a></p>'
                 }
             )
+            
+            # Track sent message
+            stats_tracker.record_message_sent(room.room_id)
         else:
             # Send error message
             await client.room_send(
@@ -221,3 +242,134 @@ async def handle_meme_command(client, room, event):
         )
     finally:
         await client.room_typing(room.room_id, typing_state=False)
+
+async def handle_stats_command(client, room, event):
+    """Handle stats command for Matrix"""
+    try:
+        # Track command usage
+        stats_tracker.record_command_usage('?stats')
+        
+        # Get statistics
+        uptime = stats_tracker.get_uptime()
+        daily_stats = stats_tracker.get_daily_stats()
+        hourly_dist = stats_tracker.get_hourly_distribution()
+        active_rooms = stats_tracker.get_most_active_rooms(3)
+        command_stats = stats_tracker.get_command_stats()
+        feature_stats = stats_tracker.get_feature_stats()
+        
+        # Build stats message
+        stats_text = f"""📊 **{BOT_USERNAME.capitalize()} Bot Statistics**
+
+**🕐 Uptime:** {uptime}
+
+**📈 Activity (Last 24 Hours):**
+• Messages Received: {daily_stats['messages_received']}
+• Messages Sent: {daily_stats['messages_sent']}
+• Active Rooms: {daily_stats['active_rooms']}/{daily_stats['total_rooms']}
+
+**🏠 Room Participation:**
+• Total Rooms: {len(stats_tracker.active_rooms)}
+• Total Messages Processed: {stats_tracker.total_messages_processed}
+• Total Messages Sent: {stats_tracker.total_messages_sent}"""
+
+        if active_rooms:
+            stats_text += "\n\n**🔥 Most Active Rooms:**"
+            for i, (room_id, count) in enumerate(active_rooms, 1):
+                # Truncate room ID for display
+                display_id = room_id[:30] + "..." if len(room_id) > 30 else room_id
+                stats_text += f"\n{i}. {display_id}: {count} messages"
+
+        if hourly_dist:
+            stats_text += "\n\n**⏰ Peak Activity Hours (UTC):**"
+            for hour, count in hourly_dist[:3]:
+                stats_text += f"\n• {hour:02d}:00 - {count} messages"
+
+        if command_stats:
+            stats_text += "\n\n**🎮 Command Usage:**"
+            for cmd, count in sorted(command_stats.items(), key=lambda x: x[1], reverse=True)[:5]:
+                stats_text += f"\n• {cmd}: {count} times"
+
+        if feature_stats:
+            stats_text += "\n\n**✨ Feature Usage:**"
+            for feature, count in sorted(feature_stats.items(), key=lambda x: x[1], reverse=True):
+                feature_name = feature.replace('_', ' ').title()
+                stats_text += f"\n• {feature_name}: {count} times"
+
+        # Add enabled integrations
+        stats_text += "\n\n**🔌 Enabled Integrations:**"
+        integrations_list = []
+        
+        # Check which integrations are enabled
+        if INTEGRATIONS.get('matrix', False):
+            integrations_list.append("✅ Matrix")
+        if INTEGRATIONS.get('discord', False):
+            integrations_list.append("✅ Discord")
+        if INTEGRATIONS.get('telegram', False):
+            integrations_list.append("✅ Telegram")
+        if INTEGRATIONS.get('whatsapp', False):
+            integrations_list.append("✅ WhatsApp")
+        if INTEGRATIONS.get('messenger', False):
+            integrations_list.append("✅ Messenger")
+        if INTEGRATIONS.get('instagram', False):
+            integrations_list.append("✅ Instagram")
+        
+        for integration in integrations_list:
+            stats_text += f"\n• {integration}"
+
+        # Add enabled features
+        stats_text += "\n\n**🎯 Enabled Features:**"
+        features_list = []
+        
+        if ENABLE_PRICE_TRACKING:
+            features_list.append("✅ Price Tracking")
+        if ENABLE_MEME_GENERATION:
+            features_list.append("✅ Meme Generation")
+        features_list.append("✅ URL Analysis")
+        features_list.append("✅ Web Search")
+        features_list.append("✅ Code Formatting")
+        features_list.append("✅ Emoji Reactions")
+        
+        for feature in features_list:
+            stats_text += f"\n• {feature}"
+
+        # Add LLM configuration
+        stats_text += "\n\n**🧠 LLM Configuration:**"
+        stats_text += f"\n• Provider: {LLM_PROVIDER.upper()}"
+        if LLM_PROVIDER == "openrouter":
+            model_name = OPENROUTER_MODEL.split('/')[-1] if '/' in OPENROUTER_MODEL else OPENROUTER_MODEL
+            stats_text += f"\n• Model: {model_name}"
+        elif LLM_PROVIDER == "ollama":
+            stats_text += f"\n• Model: {OLLAMA_MODEL}"
+        
+        # Add context configuration
+        stats_text += f"\n\n**💾 Context Configuration:**"
+        stats_text += f"\n• Room History: {MAX_ROOM_HISTORY} messages"
+        stats_text += f"\n• Context Lookback: {MAX_CONTEXT_LOOKBACK} messages"
+
+        # Send stats message with formatting
+        await client.room_send(
+            room_id=room.room_id,
+            message_type="m.room.message",
+            content={
+                "msgtype": "m.text",
+                "body": stats_text.replace("**", "").replace("•", "-"),  # Plain text fallback
+                "format": "org.matrix.custom.html",
+                "formatted_body": stats_text.replace("**", "<strong>").replace("**", "</strong>")
+                                           .replace("•", "•")
+                                           .replace("\n", "<br/>")
+            }
+        )
+        
+        # Track sent message
+        stats_tracker.record_message_sent(room.room_id)
+        
+    except Exception as e:
+        logger.error(f"Error handling stats command: {e}")
+        await client.room_send(
+            room_id=room.room_id,
+            message_type="m.room.message",
+            content={
+                "msgtype": "m.text",
+                "body": "Sorry, I couldn't display the statistics. Please try again."
+            }
+        )
