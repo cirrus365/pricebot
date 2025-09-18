@@ -1,6 +1,9 @@
 """Message handling and processing"""
 import re
 import html
+import time
+import json
+import os
 from datetime import datetime
 from asyncio import Queue, QueueFull
 from nio import MatrixRoom, RoomMessageText
@@ -17,6 +20,64 @@ from modules.stats_tracker import stats_tracker
 
 # Create a request queue to prevent overload
 request_queue = Queue(maxsize=MAX_QUEUE_SIZE)
+
+# Track processed events to avoid duplicates
+PROCESSED_EVENTS_FILE = ".processed_events.json"
+processed_events = set()
+bot_start_time = time.time()
+
+def load_processed_events():
+    """Load processed event IDs from file"""
+    global processed_events
+    if os.path.exists(PROCESSED_EVENTS_FILE):
+        try:
+            with open(PROCESSED_EVENTS_FILE, 'r') as f:
+                data = json.load(f)
+                # Only keep events from the last 24 hours to prevent file from growing too large
+                current_time = time.time()
+                processed_events = set(
+                    event_id for event_id, timestamp in data.items()
+                    if current_time - timestamp < 86400  # 24 hours
+                )
+                save_processed_events()  # Clean up old entries
+        except Exception as e:
+            print(f"[WARNING] Could not load processed events: {e}")
+            processed_events = set()
+
+def save_processed_events():
+    """Save processed event IDs to file"""
+    try:
+        current_time = time.time()
+        # Convert set to dict with timestamps, only keeping recent events
+        events_dict = {}
+        for event_id in processed_events:
+            events_dict[event_id] = current_time
+        
+        # Also load existing file to preserve timestamps
+        if os.path.exists(PROCESSED_EVENTS_FILE):
+            try:
+                with open(PROCESSED_EVENTS_FILE, 'r') as f:
+                    existing = json.load(f)
+                    # Merge, keeping existing timestamps where available
+                    for event_id, timestamp in existing.items():
+                        if event_id in processed_events and current_time - timestamp < 86400:
+                            events_dict[event_id] = timestamp
+            except:
+                pass
+        
+        # Save to file
+        with open(PROCESSED_EVENTS_FILE, 'w') as f:
+            json.dump(events_dict, f)
+    except Exception as e:
+        print(f"[WARNING] Could not save processed events: {e}")
+
+def mark_event_processed(event_id):
+    """Mark an event as processed"""
+    processed_events.add(event_id)
+    save_processed_events()
+
+# Load processed events on module import
+load_processed_events()
 
 async def get_replied_to_event(client, room_id, reply_to_event_id):
     """Fetch the event that was replied to"""
@@ -83,6 +144,23 @@ async def message_callback(client, room: MatrixRoom, event: RoomMessageText):
     print(f"[DEBUG] Room ID: {room.room_id}")
     print(f"[DEBUG] Sender: {event.sender}, Bot ID: {client.user_id}")
     print(f"[DEBUG] Message: {event.body}")
+    print(f"[DEBUG] Event ID: {event.event_id}")
+    
+    # Check if we've already processed this event
+    if event.event_id in processed_events:
+        print(f"[DEBUG] Already processed event {event.event_id}, skipping")
+        return
+    
+    # Check if message is from before bot started (with 5 second grace period)
+    # This prevents responding to old messages on startup
+    message_timestamp = event.server_timestamp / 1000 if event.server_timestamp else time.time()
+    if message_timestamp < (bot_start_time - 5):
+        print(f"[DEBUG] Message from before bot startup, marking as processed and skipping")
+        mark_event_processed(event.event_id)
+        return
+    
+    # Mark this event as processed immediately to prevent duplicates
+    mark_event_processed(event.event_id)
     
     # Track received message (before filtering)
     stats_tracker.record_message_received(room.room_id, event.sender, event.body)

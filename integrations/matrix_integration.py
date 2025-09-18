@@ -3,13 +3,14 @@ Matrix integration for Chatbot
 """
 import asyncio
 import logging
+import time
 from nio import AsyncClient, LoginResponse, RoomMessageText, InviteMemberEvent
 from config.settings import (
     HOMESERVER, USERNAME, PASSWORD, BOT_USERNAME, ENABLE_MEME_GENERATION,
     ENABLE_PRICE_TRACKING, INTEGRATIONS, LLM_PROVIDER, OPENROUTER_MODEL,
     OLLAMA_MODEL, MAX_ROOM_HISTORY, MAX_CONTEXT_LOOKBACK
 )
-from modules.message_handler import message_callback
+from modules.message_handler import message_callback, mark_event_processed
 from modules.invite_handler import invite_callback, joined_rooms
 from modules.cleanup import cleanup_old_context
 from modules.meme_generator import meme_generator
@@ -52,6 +53,10 @@ async def run_matrix_bot():
         
         # Create wrapped callbacks that include the client
         async def wrapped_message_callback(room, event):
+            # Mark command events as processed to prevent duplicate handling
+            if event.body.strip().startswith('?'):
+                mark_event_processed(event.event_id)
+            
             # Check if it's a help command
             if event.body.strip() == '?help':
                 await handle_help_command(client, room, event)
@@ -76,8 +81,25 @@ async def run_matrix_bot():
         
         # Do an initial sync to get the latest state
         logger.info("Matrix: Performing initial sync...")
-        sync_response = await client.sync(timeout=30000, full_state=True)
+        # Use since parameter to only get recent messages
+        sync_filter = {
+            "room": {
+                "timeline": {
+                    "limit": 1  # Only get the most recent message per room on startup
+                }
+            }
+        }
+        sync_response = await client.sync(timeout=30000, full_state=True, sync_filter=sync_filter)
         logger.info(f"Matrix: Initial sync completed. Next batch: {sync_response.next_batch}")
+        
+        # Mark all messages from initial sync as processed to avoid responding to old messages
+        if hasattr(sync_response, 'rooms') and hasattr(sync_response.rooms, 'join'):
+            for room_id, room_data in sync_response.rooms.join.items():
+                if hasattr(room_data, 'timeline') and hasattr(room_data.timeline, 'events'):
+                    for event in room_data.timeline.events:
+                        if hasattr(event, 'event_id'):
+                            mark_event_processed(event.event_id)
+                            logger.debug(f"Marked initial sync event as processed: {event.event_id}")
         
         # Start cleanup task
         asyncio.create_task(cleanup_old_context())
@@ -112,6 +134,7 @@ async def run_matrix_bot():
         print("🔄 Retry logic: 3 attempts with exponential backoff")
         print("🧹 Auto-cleanup: Hourly context cleanup to maintain performance")
         print("📉 Reduced context: Optimized for faster response times")
+        print("🔁 Duplicate prevention: Won't respond to old messages on restart")
         print("=" * 50)
         
         # Sync forever
