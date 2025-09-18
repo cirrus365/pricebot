@@ -14,7 +14,8 @@ from nio import (
     InviteMemberEvent,
     MegolmEvent,
     EncryptionError,
-    crypto
+    crypto,
+    OlmTrustError
 )
 from config.settings import (
     HOMESERVER, USERNAME, PASSWORD, BOT_USERNAME, ENABLE_MEME_GENERATION,
@@ -56,6 +57,31 @@ def initialize_handlers():
     stats_tracker = st
     stock_tracker = stk
 
+async def trust_own_devices(client):
+    """Trust/ignore our own devices to allow E2EE to work"""
+    try:
+        # Get our own user ID and device ID
+        user_id = client.user_id
+        device_id = client.device_id
+        
+        # Get the device store
+        if hasattr(client, 'olm') and client.olm:
+            device_store = client.olm.device_store
+            
+            # Check if our user exists in the device store
+            if user_id in device_store:
+                user_devices = device_store[user_id]
+                
+                # Ignore/trust all our own devices
+                for dev_id, device in user_devices.items():
+                    if not client.olm.is_device_verified(device) and not client.olm.is_device_ignored(device):
+                        logger.info(f"Ignoring unverified device: {dev_id}")
+                        client.olm.ignore_device(device)
+                        
+            logger.info("Own devices marked as ignored/trusted for E2EE")
+    except Exception as e:
+        logger.warning(f"Error trusting own devices: {e}")
+
 async def handle_encrypted_message(client, room, event):
     """Handle encrypted messages when E2EE is enabled"""
     try:
@@ -96,7 +122,8 @@ async def handle_encrypted_message(client, room, event):
                     content={
                         "msgtype": "m.text",
                         "body": "⚠️ Unable to decrypt message. Please ensure I'm verified in this room's security settings."
-                    }
+                    },
+                    ignore_unverified_devices=True  # Send even to unverified devices
                 )
             
     except Exception as e:
@@ -201,10 +228,14 @@ async def run_matrix_bot():
                 await client.keys_upload()
                 logger.info("E2EE: Keys uploaded")
             
-            # Trust our own device by default for bot usage
-            # Note: In production, you'd want proper device verification
+            # Do an initial sync to get device lists
+            await client.sync(timeout=10000)
+            
+            # Trust/ignore our own devices
+            await trust_own_devices(client)
+            
             logger.info(f"E2EE: Device {response.device_id} ready")
-            logger.info("E2EE: Note - Device verification handled automatically for bot operation")
+            logger.info("E2EE: Auto-ignoring unverified devices for bot operation")
         
         # Get list of joined rooms
         logger.info("Matrix: Getting list of joined rooms...")
@@ -269,7 +300,7 @@ async def run_matrix_bot():
             print("🔐 E2EE: ENABLED - Supporting encrypted rooms")
             print(f"🔑 Store Path: {store_path}")
             print(f"🔑 Device ID: {response.device_id}")
-            print("⚠️  Note: Device auto-trusted for bot operation")
+            print("⚠️  Auto-ignoring unverified devices for bot operation")
         else:
             print("🔓 E2EE: DISABLED - Only unencrypted rooms supported")
         print("✅ Listening for messages in all joined rooms")
@@ -376,7 +407,8 @@ Need more help? Just ask me anything!"""
                 "formatted_body": help_text.replace("**", "<strong>").replace("**", "</strong>")
                                            .replace("•", "•")
                                            .replace("\n", "<br/>")
-            }
+            },
+            ignore_unverified_devices=True  # Send even to unverified devices
         )
         
     except Exception as e:
@@ -387,7 +419,8 @@ Need more help? Just ask me anything!"""
             content={
                 "msgtype": "m.text",
                 "body": "Sorry, I couldn't display the help message. Please try again."
-            }
+            },
+            ignore_unverified_devices=True
         )
 
 async def handle_meme_command(client, room, event):
@@ -416,7 +449,8 @@ async def handle_meme_command(client, room, event):
                     "body": formatted_body,
                     "format": "org.matrix.custom.html",
                     "formatted_body": f'<p>{caption}</p><p><a href="{meme_url}">{meme_url}</a></p>'
-                }
+                },
+                ignore_unverified_devices=True
             )
             
             # Track sent message
@@ -429,7 +463,8 @@ async def handle_meme_command(client, room, event):
                 content={
                     "msgtype": "m.text",
                     "body": caption or "Failed to generate meme"
-                }
+                },
+                ignore_unverified_devices=True
             )
             
     except Exception as e:
@@ -440,7 +475,8 @@ async def handle_meme_command(client, room, event):
             content={
                 "msgtype": "m.text",
                 "body": "Sorry, I couldn't create a meme right now. Please try again later."
-            }
+            },
+            ignore_unverified_devices=True
         )
     finally:
         await client.room_typing(room.room_id, typing_state=False)
@@ -478,7 +514,8 @@ async def handle_stonks_command(client, room, event):
                                          .replace("•", "•")
                                          .replace("\n", "<br/>")
                                          .replace("_", "<em>").replace("_", "</em>")
-            }
+            },
+            ignore_unverified_devices=True
         )
         
         # Track sent message
@@ -492,7 +529,8 @@ async def handle_stonks_command(client, room, event):
             content={
                 "msgtype": "m.text",
                 "body": "Sorry, I couldn't fetch stock data right now. Please try again later."
-            }
+            },
+            ignore_unverified_devices=True
         )
     finally:
         await client.room_typing(room.room_id, typing_state=False)
@@ -608,7 +646,7 @@ async def handle_stats_command(client, room, event):
             stats_text += f"\n\n**🔐 Encryption Status:**"
             stats_text += f"\n• E2EE: Enabled"
             stats_text += f"\n• Store Path: {MATRIX_STORE_PATH}"
-            stats_text += f"\n• Device Status: Ready for encryption"
+            stats_text += f"\n• Device Status: Ready (auto-ignoring unverified)"
 
         # Send stats message with formatting
         await client.room_send(
@@ -621,7 +659,8 @@ async def handle_stats_command(client, room, event):
                 "formatted_body": stats_text.replace("**", "<strong>").replace("**", "</strong>")
                                            .replace("•", "•")
                                            .replace("\n", "<br/>")
-            }
+            },
+            ignore_unverified_devices=True
         )
         
         # Track sent message
@@ -635,5 +674,6 @@ async def handle_stats_command(client, room, event):
             content={
                 "msgtype": "m.text",
                 "body": "Sorry, I couldn't display the statistics. Please try again."
-            }
+            },
+            ignore_unverified_devices=True
         )
