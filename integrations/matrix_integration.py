@@ -14,7 +14,6 @@ from nio import (
     InviteMemberEvent,
     MegolmEvent,
     EncryptionError,
-    RoomEncryptedMessage,
     crypto
 )
 from config.settings import (
@@ -74,10 +73,6 @@ async def handle_encrypted_message(client, room, event):
                         "body": "⚠️ Unable to decrypt message. Please ensure I'm verified in this room's security settings."
                     }
                 )
-        
-        # Handle RoomEncryptedMessage - shouldn't happen if E2EE is properly set up
-        elif isinstance(event, RoomEncryptedMessage):
-            logger.error(f"Received RoomEncryptedMessage instead of MegolmEvent in {room.room_id}")
             
     except Exception as e:
         logger.error(f"Error handling encrypted message: {e}")
