@@ -31,6 +31,31 @@ from modules.stock_tracker import stock_tracker
 
 logger = logging.getLogger(__name__)
 
+async def trust_devices(client):
+    """Trust all devices for E2EE to work"""
+    try:
+        # Get all devices for the user
+        devices_response = await client.devices()
+        
+        if hasattr(devices_response, 'devices'):
+            for device in devices_response.devices:
+                # Trust each device, including our own
+                if device.id:
+                    logger.info(f"Trusting device: {device.id}")
+                    # Set device as verified
+                    client.verify_device(device)
+                    
+        # Also trust our own device explicitly
+        if client.device_id:
+            logger.info(f"Trusting own device: {client.device_id}")
+            # Get our own device
+            own_device = client.device_store[client.user_id][client.device_id]
+            if own_device:
+                client.verify_device(own_device)
+                
+    except Exception as e:
+        logger.warning(f"Error trusting devices: {e}")
+
 async def handle_encrypted_message(client, room, event):
     """Handle encrypted messages when E2EE is enabled"""
     try:
@@ -156,27 +181,33 @@ async def run_matrix_bot():
     
     try:
         # Login
-        response = await client.login(PASSWORD)
+        response = await client.login(PASSWORD, device_name=f"{BOT_USERNAME}-bot")
         if not isinstance(response, LoginResponse):
             logger.error(f"Failed to login to Matrix: {response}")
             return
         
-        logger.info(f"Matrix: Logged in as {client.user_id}")
+        logger.info(f"Matrix: Logged in as {client.user_id} with device {response.device_id}")
         
         # Trust the device we just logged in on if E2EE is enabled
         if ENABLE_MATRIX_E2EE:
-            # Set up device name
-            device_name = f"{BOT_USERNAME}-bot"
-            await client.update_device(response.device_id, {"display_name": device_name})
-            logger.info(f"E2EE: Device name set to {device_name}")
-            
-            # Load store and trust devices
+            # Load store first
             client.load_store()
             
-            # Trust our own device
+            # Upload keys if needed
             if client.should_upload_keys:
                 await client.keys_upload()
                 logger.info("E2EE: Keys uploaded")
+            
+            # Query keys for our own user
+            await client.keys_query([client.user_id])
+            
+            # Trust all our devices (including the current one)
+            await trust_devices(client)
+            
+            # Save the trusted state
+            client.store_update_device_keys()
+            
+            logger.info(f"E2EE: Device {response.device_id} trusted and ready")
         
         # Get list of joined rooms
         logger.info("Matrix: Getting list of joined rooms...")
@@ -240,6 +271,8 @@ async def run_matrix_bot():
         if ENABLE_MATRIX_E2EE:
             print("🔐 E2EE: ENABLED - Supporting encrypted rooms")
             print(f"🔑 Store Path: {store_path}")
+            print(f"🔑 Device ID: {response.device_id}")
+            print("✅ Device auto-trusted for E2EE")
         else:
             print("🔓 E2EE: DISABLED - Only unencrypted rooms supported")
         print("✅ Listening for messages in all joined rooms")
