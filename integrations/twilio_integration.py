@@ -21,6 +21,7 @@ from config.settings import (
 )
 from modules.llm import get_llm_reply
 from modules.price_tracker import price_tracker
+from modules.stock_tracker import stock_tracker
 from modules.web_search import search_with_jina, needs_web_search
 from modules.meme_generator import meme_generator
 from utils.helpers import extract_urls_from_message, detect_code_in_message
@@ -243,6 +244,18 @@ class TwilioBot:
             else:
                 return "Usage: ?price <crypto> [currency] or ?price <from> <to>\nExamples: ?price xmr usd, ?price btc, ?price usd aud"
         
+        elif cmd == '?stonks':
+            if len(cmd_parts) > 1:
+                ticker = cmd_parts[1]
+                stock_response = await stock_tracker.get_stock_info(ticker)
+                # Clean up formatting for plain text
+                stock_response = stock_response.replace("**", "").replace("_", "")
+                return stock_response
+            else:
+                market_summary = await stock_tracker.get_market_summary()
+                market_summary = market_summary.replace("**", "").replace("_", "")
+                return market_summary
+        
         elif cmd == '?stats':
             history_key = f"{platform}:{sender_id}"
             message_count = len(message_history[history_key])
@@ -268,6 +281,9 @@ class TwilioBot:
         if ENABLE_PRICE_TRACKING:
             base_help += "?price <crypto> [currency] - Get cryptocurrency price\n"
             base_help += "?price <from> <to> - Get exchange rate\n"
+        
+        base_help += "?stonks <ticker> - Get stock market data\n"
+        base_help += "?stonks - Get global market summary\n"
         
         if ENABLE_MEME_GENERATION:
             base_help += "?meme <topic> - Generate a meme with AI captions\n"
@@ -354,6 +370,8 @@ async def run_twilio_bot():
     
     if ENABLE_PRICE_TRACKING:
         logger.info("  Price queries: ?price <crypto> [currency] or ?price <from> <to>")
+    
+    logger.info("  Stock market: ?stonks <ticker> for stock data")
     
     # Create and run the bot
     bot = TwilioBot()

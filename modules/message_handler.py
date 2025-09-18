@@ -12,6 +12,7 @@ from modules.reactions import maybe_react
 from modules.web_search import fetch_url_content
 from modules.llm import get_llm_reply_with_retry
 from modules.price_tracker import price_tracker
+from modules.stock_tracker import stock_tracker
 from modules.stats_tracker import stats_tracker
 
 # Create a request queue to prevent overload
@@ -141,6 +142,13 @@ async def message_callback(client, room: MatrixRoom, event: RoomMessageText):
                     }
                 )
                 return
+        
+        # Handle ?stonks command (basic handling, main logic in matrix_integration.py)
+        elif command == '?stonks':
+            # This is handled in matrix_integration.py
+            # We just track it here for stats
+            stats_tracker.record_feature_usage('stock_tracking')
+            return
         
         # ?help command is handled in matrix_integration.py
         # ?meme command is handled in matrix_integration.py

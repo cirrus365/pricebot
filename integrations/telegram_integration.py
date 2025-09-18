@@ -11,6 +11,7 @@ from config.settings import TELEGRAM_BOT_TOKEN, TELEGRAM_ALLOWED_USERS, TELEGRAM
 from config.personality import BOT_PERSONALITY
 from modules.llm import get_llm_reply
 from modules.price_tracker import price_tracker
+from modules.stock_tracker import stock_tracker
 from modules.web_search import search_with_jina, fetch_url_content
 from modules.meme_generator import meme_generator
 from utils.formatting import format_code_blocks
@@ -81,6 +82,7 @@ class TelegramBot:
             "Here's what I can do:\n"
             "💬 Just chat with me normally\n"
             "💰 /price <crypto> [currency] - Get prices\n"
+            "📊 /stonks <ticker> - Get stock market data\n"
             "🔍 /search <query> - Search the web\n"
         )
         
@@ -110,6 +112,9 @@ class TelegramBot:
             "💰 /price <crypto> [currency] - Get cryptocurrency price\n"
             "/price <from> <to> - Get exchange rate\n"
             "/xmr - Quick Monero price check\n\n"
+            "*Stock Market:*\n"
+            "📊 /stonks <ticker> - Get detailed stock information\n"
+            "/stonks - Get global market summary\n\n"
         )
         
         if ENABLE_MEME_GENERATION:
@@ -129,6 +134,35 @@ class TelegramBot:
         )
         
         await update.message.reply_text(help_text, parse_mode=ParseMode.MARKDOWN)
+        
+    async def stonks_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /stonks command"""
+        if not self.is_authorized(update):
+            await update.message.reply_text("❌ Sorry, you're not authorized to use this bot.")
+            return
+            
+        # Send typing indicator
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+        
+        if not context.args:
+            # No ticker provided, show market summary
+            response = await stock_tracker.get_market_summary()
+        else:
+            # Get stock info for the provided ticker
+            ticker = context.args[0]
+            response = await stock_tracker.get_stock_info(ticker)
+        
+        # Format response for Telegram markdown
+        response = response.replace("**", "*")  # Convert bold markers
+        response = response.replace("_", "")    # Remove italics to avoid conflicts
+        
+        # Split long messages if needed
+        if len(response) > 4096:
+            chunks = [response[i:i+4000] for i in range(0, len(response), 4000)]
+            for chunk in chunks:
+                await update.message.reply_text(chunk, parse_mode=ParseMode.MARKDOWN)
+        else:
+            await update.message.reply_text(response, parse_mode=ParseMode.MARKDOWN)
         
     async def meme_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /meme command"""
@@ -342,6 +376,7 @@ async def run_telegram_bot():
         application.add_handler(CommandHandler("help", bot.help_command))
         application.add_handler(CommandHandler("price", bot.price_command))
         application.add_handler(CommandHandler("xmr", bot.xmr_command))
+        application.add_handler(CommandHandler("stonks", bot.stonks_command))
         application.add_handler(CommandHandler("search", bot.search_command))
         application.add_handler(CommandHandler("stats", bot.stats_command))
         application.add_handler(CommandHandler("ping", bot.ping_command))
@@ -364,6 +399,7 @@ async def run_telegram_bot():
         print("📝 Commands: /help to see all commands")
         print("💬 Chat: Just send a message to chat")
         print("💰 Price tracking: /price <crypto> [currency] or /price <from> <to>")
+        print("📊 Stock market: /stonks <ticker> for stock data")
         if ENABLE_MEME_GENERATION:
             print("🎨 Meme generation: /meme <topic> to create memes")
         print("🔍 Web search: /search <query>")

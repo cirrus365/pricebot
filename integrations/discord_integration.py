@@ -10,6 +10,7 @@ from config.settings import DISCORD_TOKEN, DISCORD_COMMAND_PREFIX, DISCORD_ALLOW
 from config.personality import BOT_PERSONALITY
 from modules.llm import get_llm_reply
 from modules.price_tracker import price_tracker
+from modules.stock_tracker import stock_tracker
 from modules.web_search import search_with_jina, fetch_url_content
 from modules.meme_generator import meme_generator
 from utils.formatting import format_code_blocks
@@ -187,6 +188,12 @@ class ChatbotCommands(commands.Cog):
             inline=False
         )
         
+        embed.add_field(
+            name="📊 Stock Market",
+            value="`?stonks <ticker>` - Get detailed stock information\n`?stonks` - Get global market summary",
+            inline=False
+        )
+        
         if ENABLE_MEME_GENERATION:
             embed.add_field(
                 name="🎨 Meme Generation",
@@ -208,6 +215,26 @@ class ChatbotCommands(commands.Cog):
         
         embed.set_footer(text=f"Made with 💜 by the {BOT_USERNAME.capitalize()} team")
         await ctx.send(embed=embed)
+        
+    @commands.command(name='stonks', help='Get stock market information')
+    async def stonks_command(self, ctx, *, ticker: str = None):
+        """Get stock market data"""
+        async with ctx.typing():
+            if not ticker:
+                # Get market summary
+                response = await stock_tracker.get_market_summary()
+            else:
+                # Get specific stock info
+                response = await stock_tracker.get_stock_info(ticker)
+            
+            # Create embed
+            embed = discord.Embed(
+                title="📊 Stock Market Data",
+                description=response,
+                color=discord.Color.green() if "📈" in response else discord.Color.red()
+            )
+            
+            await ctx.send(embed=embed)
         
     @commands.command(name='meme', help='Generate a meme with AI captions')
     async def meme_command(self, ctx, *, topic: str = None):
@@ -315,6 +342,7 @@ async def run_discord_bot():
     print("📝 Commands: Use ? prefix (e.g., ?help)")
     print("💬 Chat: Mention the bot or reply to its messages")
     print(f"💰 Price tracking: ?price <crypto> [currency] or ?price <from> <to>")
+    print("📊 Stock market: ?stonks <ticker> for stock data")
     if ENABLE_MEME_GENERATION:
         print("🎨 Meme generation: ?meme <topic> to create memes")
     print("🔍 Web search: Ask to search for anything")

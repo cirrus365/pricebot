@@ -14,6 +14,7 @@ from modules.invite_handler import invite_callback, joined_rooms
 from modules.cleanup import cleanup_old_context
 from modules.meme_generator import meme_generator
 from modules.stats_tracker import stats_tracker
+from modules.stock_tracker import stock_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,9 @@ async def run_matrix_bot():
             # Check if it's a stats command
             elif event.body.strip() == '?stats':
                 await handle_stats_command(client, room, event)
+            # Check if it's a stonks command
+            elif event.body.startswith('?stonks'):
+                await handle_stonks_command(client, room, event)
             else:
                 await message_callback(client, room, event)
         
@@ -94,6 +98,7 @@ async def run_matrix_bot():
         print("📚 Help: ?help to see all available commands")
         print("📈 Stats: ?stats to see bot statistics")
         print("💰 Price: ?price <crypto> [currency] for crypto/fiat prices")
+        print("📊 Stocks: ?stonks <ticker> for stock market data")
         if ENABLE_MEME_GENERATION:
             print("🎨 Meme generation: ?meme <topic> to create memes")
         print("🧠 Optimized Context: Tracking 100 messages (reduced for performance)")
@@ -140,6 +145,11 @@ async def handle_help_command(client, room, event):
 • `?price <from_currency> <to_currency>` - Get fiat exchange rates
 • Examples: `?price xmr usd`, `?price btc`, `?price usd aud`
 
+**Stock Market:**
+• `?stonks <ticker>` - Get detailed stock information
+• `?stonks` - Get global market summary
+• Examples: `?stonks AAPL`, `?stonks MSFT`, `?stonks TSLA`
+
 **Fun & Utility:**"""
         
         if ENABLE_MEME_GENERATION:
@@ -154,6 +164,7 @@ async def handle_help_command(client, room, event):
 • 👀 **Smart Reactions** - I'll react with emojis to certain keywords
 • 🧠 **Context Aware** - I remember the last 100 messages in each room
 • 🔍 **Auto Search** - I'll automatically search for current events when needed
+• 📊 **Stock Market** - Real-time stock prices and market data
 
 **Tips:**
 • I'm particularly knowledgeable about programming, Linux, security, and privacy
@@ -243,6 +254,58 @@ async def handle_meme_command(client, room, event):
     finally:
         await client.room_typing(room.room_id, typing_state=False)
 
+async def handle_stonks_command(client, room, event):
+    """Handle stock market command for Matrix"""
+    try:
+        # Track command usage
+        stats_tracker.record_command_usage('?stonks')
+        stats_tracker.record_feature_usage('stock_tracking')
+        
+        # Send typing indicator
+        await client.room_typing(room.room_id, typing_state=True)
+        
+        # Parse the command
+        parts = event.body.strip().split()
+        
+        if len(parts) == 1:
+            # No ticker provided, show market summary
+            response = await stock_tracker.get_market_summary()
+        else:
+            # Get stock info for the provided ticker
+            ticker = parts[1]
+            response = await stock_tracker.get_stock_info(ticker)
+        
+        # Send the response with formatting
+        await client.room_send(
+            room_id=room.room_id,
+            message_type="m.room.message",
+            content={
+                "msgtype": "m.text",
+                "body": response.replace("**", "").replace("•", "-"),  # Plain text fallback
+                "format": "org.matrix.custom.html",
+                "formatted_body": response.replace("**", "<strong>").replace("**", "</strong>")
+                                         .replace("•", "•")
+                                         .replace("\n", "<br/>")
+                                         .replace("_", "<em>").replace("_", "</em>")
+            }
+        )
+        
+        # Track sent message
+        stats_tracker.record_message_sent(room.room_id)
+        
+    except Exception as e:
+        logger.error(f"Error handling stonks command: {e}")
+        await client.room_send(
+            room_id=room.room_id,
+            message_type="m.room.message",
+            content={
+                "msgtype": "m.text",
+                "body": "Sorry, I couldn't fetch stock data right now. Please try again later."
+            }
+        )
+    finally:
+        await client.room_typing(room.room_id, typing_state=False)
+
 async def handle_stats_command(client, room, event):
     """Handle stats command for Matrix"""
     try:
@@ -324,6 +387,7 @@ async def handle_stats_command(client, room, event):
             features_list.append("✅ Price Tracking")
         if ENABLE_MEME_GENERATION:
             features_list.append("✅ Meme Generation")
+        features_list.append("✅ Stock Market Data")
         features_list.append("✅ URL Analysis")
         features_list.append("✅ Web Search")
         features_list.append("✅ Code Formatting")
