@@ -14,7 +14,8 @@ from nio import (
     InviteMemberEvent,
     MegolmEvent,
     EncryptionError,
-    crypto
+    MatrixRoom,
+    JoinResponse
 )
 from config.settings import (
     HOMESERVER, USERNAME, PASSWORD, BOT_USERNAME, ENABLE_MEME_GENERATION,
@@ -56,81 +57,52 @@ def initialize_handlers():
     stats_tracker = st
     stock_tracker = stk
 
-async def trust_all_devices(client):
-    """Trust/ignore ALL devices to allow E2EE to work in bot mode"""
-    try:
-        # Get the device store
-        if hasattr(client, 'olm') and client.olm:
-            device_store = client.olm.device_store
-            
-            # Iterate through all users in the device store
-            for user_id in device_store.users():
-                user_devices = device_store[user_id]
-                
-                # Ignore all unverified devices for each user
-                for device_id, device in user_devices.items():
-                    if not client.olm.is_device_verified(device):
-                        # Check if device is already ignored
-                        if not client.olm.is_device_ignored(device):
-                            logger.info(f"Ignoring unverified device: {user_id} - {device_id}")
-                            client.olm.ignore_device(device)
-                        
-            logger.info("All unverified devices marked as ignored for E2EE")
-    except Exception as e:
-        logger.warning(f"Error trusting devices: {e}")
-
-async def handle_encrypted_message(client, room, event):
+async def handle_encrypted_message(client, room: MatrixRoom, event: MegolmEvent):
     """Handle encrypted messages when E2EE is enabled"""
     try:
-        # Check if it's a MegolmEvent (successfully decrypted)
-        if isinstance(event, MegolmEvent):
-            # The decrypted content is in the source attribute
-            decrypted_event = event.source
+        # Check if it's an encryption error
+        if isinstance(event, EncryptionError):
+            logger.warning(f"Failed to decrypt message in {room.room_id}: {event.description}")
+            return
+        
+        # For MegolmEvent, the decrypted content is in the source attribute
+        if event.source.get("content", {}).get("msgtype") == "m.text":
+            body = event.source["content"].get("body", "")
+            
+            # Ignore own messages
+            if event.sender == client.user_id:
+                return
             
             # Create a pseudo RoomMessageText event with the decrypted content
-            if decrypted_event.get("content", {}).get("msgtype") == "m.text":
-                # Create a simple object to hold the decrypted message data
-                class DecryptedMessage:
-                    def __init__(self, event_id, sender, body, server_timestamp):
-                        self.event_id = event_id
-                        self.sender = sender
-                        self.body = body
-                        self.server_timestamp = server_timestamp
-                        self.source = decrypted_event
-                
-                decrypted_msg = DecryptedMessage(
-                    event_id=event.event_id,
-                    sender=event.sender,
-                    body=decrypted_event["content"]["body"],
-                    server_timestamp=event.server_timestamp
-                )
-                
-                # Process the decrypted message
-                await process_message(client, room, decrypted_msg)
-        
-        # Handle EncryptionError - failed to decrypt
-        elif isinstance(event, EncryptionError):
-            logger.warning(f"Failed to decrypt message in {room.room_id}: {event}")
-            # Optionally send a message to the room about the decryption failure
-            if event.sender != client.user_id:  # Don't respond to our own failed decryptions
-                # Trust all devices and retry
-                await trust_all_devices(client)
-                
-                await client.room_send(
-                    room_id=room.room_id,
-                    message_type="m.room.message",
-                    content={
-                        "msgtype": "m.text",
-                        "body": "⚠️ Unable to decrypt message. Please ensure I'm verified in this room's security settings."
-                    },
-                    ignore_unverified_devices=True
-                )
+            class DecryptedMessage:
+                def __init__(self, event_id, sender, body, server_timestamp):
+                    self.event_id = event_id
+                    self.sender = sender
+                    self.body = body
+                    self.server_timestamp = server_timestamp
+                    self.source = event.source
+            
+            decrypted_msg = DecryptedMessage(
+                event_id=event.event_id,
+                sender=event.sender,
+                body=body,
+                server_timestamp=event.server_timestamp
+            )
+            
+            logger.debug(f"Received encrypted message from {event.sender}: {body}")
+            
+            # Process the decrypted message
+            await process_message(client, room, decrypted_msg)
             
     except Exception as e:
         logger.error(f"Error handling encrypted message: {e}")
 
 async def process_message(client, room, event):
     """Process a message (encrypted or unencrypted)"""
+    # Ignore own messages
+    if event.sender == client.user_id:
+        return
+        
     # Mark command events as processed to prevent duplicate handling
     if event.body.strip().startswith('?'):
         mark_event_processed(event.event_id)
@@ -150,26 +122,34 @@ async def process_message(client, room, event):
     else:
         await message_callback(client, room, event)
 
-async def send_message_with_retry(client, room_id, content, max_retries=2):
-    """Send a message with retry logic if device trust fails"""
-    for attempt in range(max_retries):
-        try:
-            result = await client.room_send(
-                room_id=room_id,
-                message_type="m.room.message",
-                content=content,
-                ignore_unverified_devices=True
-            )
-            return result
-        except Exception as e:
-            if "not verified or blacklisted" in str(e):
-                logger.warning(f"Device trust issue on attempt {attempt + 1}, retrying after trusting devices...")
-                await trust_all_devices(client)
-                if attempt == max_retries - 1:
-                    raise
-            else:
-                raise
-    return None
+async def send_message(client, room_id: str, content: dict):
+    """Send a message to a Matrix room with E2EE support"""
+    try:
+        # Always use ignore_unverified_devices when E2EE is enabled
+        response = await client.room_send(
+            room_id=room_id,
+            message_type="m.room.message",
+            content=content,
+            ignore_unverified_devices=True  # This is the key parameter
+        )
+        
+        if response:
+            logger.debug(f"Message sent to room {room_id}")
+            
+    except Exception as e:
+        logger.error(f"Error sending message: {e}")
+        # If first attempt fails, try again with more aggressive settings
+        if "not verified" in str(e).lower():
+            try:
+                logger.info("Retrying with ignore_unverified_devices=True")
+                response = await client.room_send(
+                    room_id=room_id,
+                    message_type="m.room.message",
+                    content=content,
+                    ignore_unverified_devices=True
+                )
+            except Exception as retry_error:
+                logger.error(f"Retry failed: {retry_error}")
 
 async def run_matrix_bot():
     """Run the Matrix bot with optional E2EE support"""
@@ -185,14 +165,6 @@ async def run_matrix_bot():
         print("  - MATRIX_USERNAME")
         print("  - MATRIX_PASSWORD")
         return
-    
-    # Configure client with E2EE support if enabled
-    config = AsyncClientConfig(
-        max_limit_exceeded=0,
-        max_timeouts=0,
-        store_sync_tokens=True,
-        encryption_enabled=ENABLE_MATRIX_E2EE,
-    )
     
     # Set up store path for E2EE if enabled
     store_path = None
@@ -220,14 +192,12 @@ async def run_matrix_bot():
         client = AsyncClient(
             HOMESERVER, 
             USERNAME,
-            store_path=str(store_path),
-            config=config
+            store_path=str(store_path)
         )
     else:
         client = AsyncClient(
             HOMESERVER, 
-            USERNAME,
-            config=config
+            USERNAME
         )
     
     try:
@@ -239,25 +209,19 @@ async def run_matrix_bot():
         
         logger.info(f"Matrix: Logged in as {client.user_id} with device {response.device_id}")
         
-        # Handle E2EE setup if enabled
+        # Setup E2EE if enabled
         if ENABLE_MATRIX_E2EE:
-            # Load store first
-            client.load_store()
-            
             # Upload keys if needed
             if client.should_upload_keys:
                 await client.keys_upload()
                 logger.info("E2EE: Keys uploaded")
             
-            # Do an initial sync to get device lists
-            logger.info("E2EE: Performing initial sync to get device lists...")
-            await client.sync(timeout=30000)
+            # Do an initial sync to get device lists and rooms
+            await client.sync(timeout=30000, full_state=True)
+            logger.info("E2EE: Initial sync complete")
             
-            # Trust all devices
-            await trust_all_devices(client)
-            
-            logger.info(f"E2EE: Device {response.device_id} ready")
-            logger.info("E2EE: Auto-ignoring ALL unverified devices for bot operation")
+            # We'll use ignore_unverified_devices=True in all sends, so no need for complex trust
+            logger.info("E2EE: Ready (using ignore_unverified_devices mode)")
         
         # Get list of joined rooms
         logger.info("Matrix: Getting list of joined rooms...")
@@ -267,16 +231,12 @@ async def run_matrix_bot():
                 joined_rooms.add(room_id)
                 stats_tracker.record_room_join(room_id)
                 logger.info(f"Matrix: Already in room: {room_id}")
-                
-                # For E2EE, share keys with the room
-                if ENABLE_MATRIX_E2EE:
-                    try:
-                        await client.joined_members(room_id)
-                    except:
-                        pass
         
         # Create wrapped callbacks that include the client
         async def wrapped_message_callback(room, event):
+            # Ignore own messages
+            if event.sender == client.user_id:
+                return
             await process_message(client, room, event)
         
         async def wrapped_encrypted_callback(room, event):
@@ -297,7 +257,6 @@ async def run_matrix_bot():
         
         # Do an initial sync to get the latest state
         logger.info("Matrix: Performing initial sync...")
-        # Use since parameter to only get recent messages
         sync_filter = {
             "room": {
                 "timeline": {
@@ -317,22 +276,8 @@ async def run_matrix_bot():
                             mark_event_processed(event.event_id)
                             logger.debug(f"Marked initial sync event as processed: {event.event_id}")
         
-        # Trust devices again after full sync
-        if ENABLE_MATRIX_E2EE:
-            await trust_all_devices(client)
-        
         # Start cleanup task
         asyncio.create_task(cleanup_old_context())
-        
-        # Create a task to periodically trust new devices
-        async def periodic_device_trust():
-            while True:
-                await asyncio.sleep(60)  # Check every minute
-                if ENABLE_MATRIX_E2EE:
-                    await trust_all_devices(client)
-        
-        if ENABLE_MATRIX_E2EE:
-            asyncio.create_task(periodic_device_trust())
         
         print("=" * 50)
         print(f"🤖 {BOT_USERNAME.capitalize()} Bot - Matrix Integration Active!")
@@ -343,8 +288,7 @@ async def run_matrix_bot():
             print("🔐 E2EE: ENABLED - Supporting encrypted rooms")
             print(f"🔑 Store Path: {store_path}")
             print(f"🔑 Device ID: {response.device_id}")
-            print("⚠️  Auto-ignoring ALL unverified devices for bot operation")
-            print("🔄 Periodic device trust enabled (60s interval)")
+            print("✅ Auto-ignoring unverified devices for bot operation")
         else:
             print("🔓 E2EE: DISABLED - Only unencrypted rooms supported")
         print("✅ Listening for messages in all joined rooms")
@@ -376,7 +320,7 @@ async def run_matrix_bot():
         print("=" * 50)
         
         # Sync forever
-        await client.sync_forever(timeout=30000, full_state=False)
+        await client.sync_forever(timeout=30000, full_state=True)
             
     except Exception as e:
         logger.error(f"Matrix bot error: {e}")
@@ -441,7 +385,7 @@ async def handle_help_command(client, room, event):
 Need more help? Just ask me anything!"""
 
         # Send help message with formatting
-        await send_message_with_retry(
+        await send_message(
             client,
             room.room_id,
             {
@@ -456,7 +400,7 @@ Need more help? Just ask me anything!"""
         
     except Exception as e:
         logger.error(f"Error handling help command: {e}")
-        await send_message_with_retry(
+        await send_message(
             client,
             room.room_id,
             {
@@ -483,7 +427,7 @@ async def handle_meme_command(client, room, event):
             # Send the message with both caption and URL
             formatted_body = f"{caption}\n{meme_url}"
             
-            await send_message_with_retry(
+            await send_message(
                 client,
                 room.room_id,
                 {
@@ -498,7 +442,7 @@ async def handle_meme_command(client, room, event):
             stats_tracker.record_message_sent(room.room_id)
         else:
             # Send error message
-            await send_message_with_retry(
+            await send_message(
                 client,
                 room.room_id,
                 {
@@ -509,7 +453,7 @@ async def handle_meme_command(client, room, event):
             
     except Exception as e:
         logger.error(f"Error handling meme command: {e}")
-        await send_message_with_retry(
+        await send_message(
             client,
             room.room_id,
             {
@@ -542,7 +486,7 @@ async def handle_stonks_command(client, room, event):
             response = await stock_tracker.get_stock_info(ticker)
         
         # Send the response with formatting
-        await send_message_with_retry(
+        await send_message(
             client,
             room.room_id,
             {
@@ -561,7 +505,7 @@ async def handle_stonks_command(client, room, event):
         
     except Exception as e:
         logger.error(f"Error handling stonks command: {e}")
-        await send_message_with_retry(
+        await send_message(
             client,
             room.room_id,
             {
@@ -686,7 +630,7 @@ async def handle_stats_command(client, room, event):
             stats_text += f"\n• Device Status: Auto-ignoring unverified devices"
 
         # Send stats message with formatting
-        await send_message_with_retry(
+        await send_message(
             client,
             room.room_id,
             {
@@ -704,7 +648,7 @@ async def handle_stats_command(client, room, event):
         
     except Exception as e:
         logger.error(f"Error handling stats command: {e}")
-        await send_message_with_retry(
+        await send_message(
             client,
             room.room_id,
             {
