@@ -15,7 +15,8 @@ from nio import (
     MegolmEvent,
     EncryptionError,
     MatrixRoom,
-    JoinResponse
+    JoinResponse,
+    RoomEncryptedMessage
 )
 from config.settings import (
     HOMESERVER, USERNAME, PASSWORD, BOT_USERNAME, ENABLE_MEME_GENERATION,
@@ -57,7 +58,7 @@ def initialize_handlers():
     stats_tracker = st
     stock_tracker = stk
 
-async def handle_encrypted_message(client, room: MatrixRoom, event: MegolmEvent):
+async def handle_encrypted_message(client, room: MatrixRoom, event):
     """Handle encrypted messages when E2EE is enabled"""
     try:
         # Check if it's an encryption error
@@ -65,8 +66,8 @@ async def handle_encrypted_message(client, room: MatrixRoom, event: MegolmEvent)
             logger.warning(f"Failed to decrypt message in {room.room_id}: {event.description}")
             return
         
-        # For MegolmEvent, the decrypted content is in the source attribute
-        if event.source.get("content", {}).get("msgtype") == "m.text":
+        # For MegolmEvent and RoomEncryptedMessage, the decrypted content is in the source attribute
+        if hasattr(event, 'source') and event.source.get("content", {}).get("msgtype") == "m.text":
             body = event.source["content"].get("body", "")
             
             # Ignore own messages
@@ -139,7 +140,7 @@ async def send_message(client, room_id: str, content: dict):
     except Exception as e:
         logger.error(f"Error sending message: {e}")
         # If first attempt fails, try again with more aggressive settings
-        if "not verified" in str(e).lower():
+        if "not verified" in str(e).lower() or "blacklisted" in str(e).lower():
             try:
                 logger.info("Retrying with ignore_unverified_devices=True")
                 response = await client.room_send(
@@ -168,6 +169,12 @@ async def run_matrix_bot():
     
     # Set up store path for E2EE if enabled
     store_path = None
+    config = AsyncClientConfig(
+        max_limit_exceeded=0,
+        max_timeouts=0,
+        encryption_enabled=ENABLE_MATRIX_E2EE,
+    )
+    
     if ENABLE_MATRIX_E2EE:
         store_path = Path(MATRIX_STORE_PATH).absolute()
         store_path.mkdir(parents=True, exist_ok=True)
@@ -192,12 +199,16 @@ async def run_matrix_bot():
         client = AsyncClient(
             HOMESERVER, 
             USERNAME,
-            store_path=str(store_path)
+            store_path=str(store_path),
+            config=config
         )
+        # Set to ignore unverified devices globally
+        client.trust_unverified_devices = True
     else:
         client = AsyncClient(
             HOMESERVER, 
-            USERNAME
+            USERNAME,
+            config=config
         )
     
     try:
@@ -211,6 +222,9 @@ async def run_matrix_bot():
         
         # Setup E2EE if enabled
         if ENABLE_MATRIX_E2EE:
+            # Set the client to trust unverified devices
+            client.trust_unverified_devices = True
+            
             # Upload keys if needed
             if client.should_upload_keys:
                 await client.keys_upload()
@@ -220,8 +234,8 @@ async def run_matrix_bot():
             await client.sync(timeout=30000, full_state=True)
             logger.info("E2EE: Initial sync complete")
             
-            # We'll use ignore_unverified_devices=True in all sends, so no need for complex trust
-            logger.info("E2EE: Ready (using ignore_unverified_devices mode)")
+            # Trust all devices (for bot operation)
+            logger.info("E2EE: Configured to ignore unverified devices for bot operation")
         
         # Get list of joined rooms
         logger.info("Matrix: Getting list of joined rooms...")
@@ -252,6 +266,7 @@ async def run_matrix_bot():
         # Add encrypted message callbacks if E2EE is enabled
         if ENABLE_MATRIX_E2EE:
             client.add_event_callback(wrapped_encrypted_callback, MegolmEvent)
+            client.add_event_callback(wrapped_encrypted_callback, RoomEncryptedMessage)
             client.add_event_callback(wrapped_encrypted_callback, EncryptionError)
             logger.info("E2EE: Encrypted message handlers registered")
         
