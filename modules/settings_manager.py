@@ -101,6 +101,33 @@ class SettingsManager:
                 return env_value
                 
         return None
+    
+    def is_meme_enabled(self) -> bool:
+        """Check if meme generation is currently enabled"""
+        # Check runtime settings first
+        if 'meme_generator' in self.runtime_settings:
+            return self.runtime_settings['meme_generator']
+        
+        # Fall back to environment variable
+        return os.getenv('ENABLE_MEME_GENERATION', 'true').lower() == 'true'
+    
+    def is_web_search_enabled(self) -> bool:
+        """Check if web search is currently enabled"""
+        # Check runtime settings first
+        if 'web_search' in self.runtime_settings:
+            return self.runtime_settings['web_search']
+        
+        # Fall back to environment variable (default to true if not set)
+        return os.getenv('ENABLE_WEB_SEARCH', 'true').lower() == 'true'
+    
+    def is_auto_invite_enabled(self) -> bool:
+        """Check if auto invite is currently enabled"""
+        # Check runtime settings first
+        if 'auto_invite' in self.runtime_settings:
+            return self.runtime_settings['auto_invite']
+        
+        # Fall back to environment variable
+        return os.getenv('ENABLE_AUTO_INVITE', 'true').lower() == 'true'
         
     def update_setting(self, setting_name: str, value: Any) -> tuple[bool, str]:
         """Update a setting value"""
@@ -296,15 +323,15 @@ Example: `?setting whitelist add @user:matrix.org`"""
         settings_text += f"• **Fallback LLM Model**: `{fallback_llm if fallback_llm else 'not set'}`\n"
         
         # Auto invite
-        auto_invite = self.get_setting_value('auto_invite')
+        auto_invite = self.is_auto_invite_enabled()
         settings_text += f"• **Auto Invite**: `{'enabled' if auto_invite else 'disabled'}`\n"
         
         # Meme generator
-        meme_gen = self.get_setting_value('meme_generator')
+        meme_gen = self.is_meme_enabled()
         settings_text += f"• **Meme Generator**: `{'enabled' if meme_gen else 'disabled'}`\n"
         
         # Web search
-        web_search = self.get_setting_value('web_search')
+        web_search = self.is_web_search_enabled()
         settings_text += f"• **Web Search**: `{'enabled' if web_search else 'disabled'}`\n"
         
         # Invite whitelist

@@ -15,6 +15,7 @@ from modules.stock_tracker import stock_tracker
 from modules.web_search import search_with_jina, fetch_url_content
 from modules.meme_generator import meme_generator
 from modules.world_clock import world_clock
+from modules.settings_manager import settings_manager
 from utils.formatting import format_code_blocks
 from utils.helpers import extract_urls_from_message, detect_code_in_message
 
@@ -88,7 +89,7 @@ class TelegramBot:
             "🔍 /search <query> - Search the web\n"
         )
         
-        if ENABLE_MEME_GENERATION:
+        if settings_manager.is_meme_enabled():
             welcome_message += "🎨 /meme <topic> - Generate memes with AI\n"
             
         welcome_message += (
@@ -122,7 +123,7 @@ class TelegramBot:
             "/stonks - Get global market summary\n\n"
         )
         
-        if ENABLE_MEME_GENERATION:
+        if settings_manager.is_meme_enabled():
             help_text += (
                 "*Meme Generation:*\n"
                 "🎨 /meme <topic> - Generate a meme with AI captions\n\n"
@@ -195,8 +196,8 @@ class TelegramBot:
             await update.message.reply_text("❌ Sorry, you're not authorized to use this bot.")
             return
             
-        if not ENABLE_MEME_GENERATION:
-            await update.message.reply_text("Meme generation is currently disabled.")
+        if not settings_manager.is_meme_enabled():
+            await update.message.reply_text("Meme generation is currently disabled. An authorized user can enable it with: /setting meme on")
             return
             
         if not context.args:
@@ -292,7 +293,10 @@ class TelegramBot:
             f"💬 Active Chats: {len(self.conversation_history)}\n"
             f"📝 Total Messages Tracked: {sum(len(h) for h in self.conversation_history.values())}\n"
             f"🧠 Max History per Chat: {self.max_history} messages\n"
-            f"✅ Bot Status: Online"
+            f"✅ Bot Status: Online\n\n"
+            f"*Features:*\n"
+            f"• Meme Generation: {'✅ Enabled' if settings_manager.is_meme_enabled() else '❌ Disabled'}\n"
+            f"• Web Search: {'✅ Enabled' if settings_manager.is_web_search_enabled() else '❌ Disabled'}"
         )
         await update.message.reply_text(stats_message, parse_mode=ParseMode.MARKDOWN)
         
@@ -408,7 +412,8 @@ async def run_telegram_bot():
         application.add_handler(CommandHandler("ping", bot.ping_command))
         application.add_handler(CommandHandler("reset", bot.reset_command))
         
-        if ENABLE_MEME_GENERATION:
+        # Only add meme handler if enabled
+        if settings_manager.is_meme_enabled():
             application.add_handler(CommandHandler("meme", bot.meme_command))
         
         # Add message handler for regular messages
@@ -427,8 +432,10 @@ async def run_telegram_bot():
         print("🕐 World clock: /clock <city/country> for world time")
         print("💰 Price tracking: /price <crypto> [currency] or /price <from> <to>")
         print("📊 Stock market: /stonks <ticker> for stock data")
-        if ENABLE_MEME_GENERATION:
+        if settings_manager.is_meme_enabled():
             print("🎨 Meme generation: /meme <topic> to create memes")
+        else:
+            print("🎨 Meme generation: DISABLED (authorized users can enable)")
         print("🔍 Web search: /search <query>")
         print("📊 Stats: /stats for bot statistics")
         if TELEGRAM_ALLOWED_USERS:

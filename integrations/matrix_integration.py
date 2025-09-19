@@ -83,8 +83,8 @@ async def process_message(client, room, event):
     # Check if it's a price command
     elif event.body.startswith('?price'):
         await handle_price_command(client, room, event)
-    # Check if it's a meme command
-    elif event.body.startswith('?meme ') and ENABLE_MEME_GENERATION:
+    # Check if it's a meme command - check runtime setting
+    elif event.body.startswith('?meme ') and settings_manager.is_meme_enabled():
         await handle_meme_command(client, room, event)
     # Check if it's a stats command
     elif event.body.strip() == '?stats':
@@ -218,8 +218,10 @@ async def run_matrix_bot():
         print("💰 Price: ?price <crypto> [currency] for crypto/fiat prices")
         print("📊 Stocks: ?stonks <ticker> for stock market data")
         print("⚙️ Settings: ?setting to manage bot configuration (authorized users only)")
-        if ENABLE_MEME_GENERATION:
+        if settings_manager.is_meme_enabled():
             print("🎨 Meme generation: ?meme <topic> to create memes")
+        else:
+            print("🎨 Meme generation: DISABLED (enable with ?setting meme on)")
         print("🧠 Optimized Context: Tracking 100 messages (reduced for performance)")
         print("📈 Context Features: Topic tracking, user expertise, important messages")
         print("💻 Technical expertise: Programming, Linux, Security, etc.")
@@ -283,7 +285,7 @@ async def handle_help_command(client, room, event):
 
 **Fun & Utility:**"""
         
-        if ENABLE_MEME_GENERATION:
+        if settings_manager.is_meme_enabled():
             help_text += "\n• `?meme <topic>` - Generate a meme with AI-generated captions"
         
         help_text += f"""
@@ -446,6 +448,18 @@ async def handle_price_command(client, room, event):
 async def handle_meme_command(client, room, event):
     """Handle meme generation command for Matrix"""
     try:
+        # Check if meme generation is enabled at runtime
+        if not settings_manager.is_meme_enabled():
+            await send_message(
+                client,
+                room.room_id,
+                {
+                    "msgtype": "m.text",
+                    "body": "Meme generation is currently disabled. An authorized user can enable it with: ?setting meme on"
+                }
+            )
+            return
+        
         # Track command usage
         stats_tracker.record_command_usage('?meme')
         stats_tracker.record_feature_usage('meme_generation')
@@ -680,12 +694,17 @@ async def handle_stats_command(client, room, event):
         
         if ENABLE_PRICE_TRACKING:
             features_list.append("✅ Price Tracking")
-        if ENABLE_MEME_GENERATION:
+        if settings_manager.is_meme_enabled():
             features_list.append("✅ Meme Generation")
+        else:
+            features_list.append("❌ Meme Generation (disabled)")
         features_list.append("✅ World Clock")
         features_list.append("✅ Stock Market Data")
         features_list.append("✅ URL Analysis")
-        features_list.append("✅ Web Search")
+        if settings_manager.is_web_search_enabled():
+            features_list.append("✅ Web Search")
+        else:
+            features_list.append("❌ Web Search (disabled)")
         features_list.append("✅ Code Formatting")
         features_list.append("✅ Emoji Reactions")
         features_list.append("✅ Settings Management")

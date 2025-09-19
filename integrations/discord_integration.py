@@ -208,7 +208,7 @@ class ChatbotCommands(commands.Cog):
             inline=False
         )
         
-        if ENABLE_MEME_GENERATION:
+        if settings_manager.is_meme_enabled():
             embed.add_field(
                 name="🎨 Meme Generation",
                 value="`?meme <topic>` - Generate a meme with AI captions",
@@ -295,8 +295,8 @@ class ChatbotCommands(commands.Cog):
     @commands.command(name='meme', help='Generate a meme with AI captions')
     async def meme_command(self, ctx, *, topic: str = None):
         """Generate a meme based on user input"""
-        if not ENABLE_MEME_GENERATION:
-            await ctx.send("Meme generation is currently disabled.")
+        if not settings_manager.is_meme_enabled():
+            await ctx.send("Meme generation is currently disabled. An authorized user can enable it with: `?setting meme on`")
             return
             
         if not topic:
@@ -372,6 +372,19 @@ class ChatbotCommands(commands.Cog):
             inline=True
         )
         
+        # Add feature status
+        embed.add_field(
+            name="Meme Generation",
+            value="✅ Enabled" if settings_manager.is_meme_enabled() else "❌ Disabled",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="Web Search",
+            value="✅ Enabled" if settings_manager.is_web_search_enabled() else "❌ Disabled",
+            inline=True
+        )
+        
         await ctx.send(embed=embed)
         
     @commands.command(name='ping', help='Check bot latency')
@@ -401,8 +414,10 @@ async def run_discord_bot():
     print("🕐 World clock: ?clock <city/country> for world time")
     print(f"💰 Price tracking: ?price <crypto> [currency] or ?price <from> <to>")
     print("📊 Stock market: ?stonks <ticker> for stock data")
-    if ENABLE_MEME_GENERATION:
+    if settings_manager.is_meme_enabled():
         print("🎨 Meme generation: ?meme <topic> to create memes")
+    else:
+        print("🎨 Meme generation: DISABLED (enable with ?setting meme on)")
     print("🔍 Web search: Ask to search for anything")
     print("📊 Stats: ?stats for bot statistics")
     print("=" * 50)
