@@ -21,11 +21,11 @@ from modules.price_tracker import price_tracker
 # Import settings_manager to get runtime settings
 from modules.settings_manager import settings_manager
 
-async def get_llm_reply_with_retry(prompt, context=None, previous_message=None, room_id=None, url_contents=None):
+async def get_llm_reply_with_retry(prompt, context=None, previous_message=None, room_id=None, url_contents=None, client=None):
     """Wrapper with retry logic and exponential backoff"""
     for attempt in range(MAX_RETRIES):
         try:
-            return await get_llm_reply(prompt, context, previous_message, room_id, url_contents)
+            return await get_llm_reply(prompt, context, previous_message, room_id, url_contents, client)
         except asyncio.TimeoutError:
             if attempt == MAX_RETRIES - 1:
                 print(f"[ERROR] All retry attempts failed due to timeout")
