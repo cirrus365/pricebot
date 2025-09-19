@@ -113,3 +113,6 @@ BASE_RETRY_DELAY = int(os.getenv("BASE_RETRY_DELAY", "1"))
 # Price tracking settings
 PRICE_CACHE_TTL = int(os.getenv("PRICE_CACHE_TTL", "300"))  # 5 minutes cache for price data
 ENABLE_PRICE_TRACKING = os.getenv("ENABLE_PRICE_TRACKING", "true").lower() == "true"
+
+# Stock market settings
+ENABLE_STOCK_MARKET = os.getenv("ENABLE_STOCK_MARKET", "true").lower() == "true"

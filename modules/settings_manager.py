@@ -90,13 +90,15 @@ class SettingsManager:
             'fallback_llm': 'OPENROUTER_FALLBACK_MODEL',
             'auto_invite': 'ENABLE_AUTO_INVITE',
             'meme_generator': 'ENABLE_MEME_GENERATION',
-            'web_search': 'ENABLE_WEB_SEARCH'
+            'web_search': 'ENABLE_WEB_SEARCH',
+            'price_tracking': 'ENABLE_PRICE_TRACKING',
+            'stock_market': 'ENABLE_STOCK_MARKET'
         }
         
         if setting_name in env_mappings:
             env_value = os.getenv(env_mappings[setting_name])
             if env_value is not None:
-                if setting_name in ['auto_invite', 'meme_generator', 'web_search']:
+                if setting_name in ['auto_invite', 'meme_generator', 'web_search', 'price_tracking', 'stock_market']:
                     return env_value.lower() == 'true'
                 return env_value
                 
@@ -128,6 +130,24 @@ class SettingsManager:
         
         # Fall back to environment variable
         return os.getenv('ENABLE_AUTO_INVITE', 'true').lower() == 'true'
+    
+    def is_price_tracking_enabled(self) -> bool:
+        """Check if price tracking is currently enabled"""
+        # Check runtime settings first
+        if 'price_tracking' in self.runtime_settings:
+            return self.runtime_settings['price_tracking']
+        
+        # Fall back to environment variable
+        return os.getenv('ENABLE_PRICE_TRACKING', 'true').lower() == 'true'
+    
+    def is_stock_market_enabled(self) -> bool:
+        """Check if stock market data is currently enabled"""
+        # Check runtime settings first
+        if 'stock_market' in self.runtime_settings:
+            return self.runtime_settings['stock_market']
+        
+        # Fall back to environment variable
+        return os.getenv('ENABLE_STOCK_MARKET', 'true').lower() == 'true'
         
     def update_setting(self, setting_name: str, value: Any) -> tuple[bool, str]:
         """Update a setting value"""
@@ -176,6 +196,24 @@ class SettingsManager:
             os.environ['ENABLE_WEB_SEARCH'] = 'true' if value else 'false'
             self.save_settings()
             return True, f"Web search {'enabled' if value else 'disabled'}"
+            
+        # Handle price tracking toggle
+        elif setting_name == 'price_tracking':
+            if isinstance(value, str):
+                value = value.lower() in ['true', 'on', 'enable', 'enabled', '1', 'yes']
+            self.runtime_settings['price_tracking'] = value
+            os.environ['ENABLE_PRICE_TRACKING'] = 'true' if value else 'false'
+            self.save_settings()
+            return True, f"Price tracking {'enabled' if value else 'disabled'}"
+            
+        # Handle stock market toggle
+        elif setting_name == 'stock_market':
+            if isinstance(value, str):
+                value = value.lower() in ['true', 'on', 'enable', 'enabled', '1', 'yes']
+            self.runtime_settings['stock_market'] = value
+            os.environ['ENABLE_STOCK_MARKET'] = 'true' if value else 'false'
+            self.save_settings()
+            return True, f"Stock market data {'enabled' if value else 'disabled'}"
             
         else:
             return False, f"Unknown setting: {setting_name}"
@@ -258,7 +296,17 @@ class SettingsManager:
             'web': 'web_search',
             'search': 'web_search',
             'web_search': 'web_search',
-            'websearch': 'web_search'
+            'websearch': 'web_search',
+            'price': 'price_tracking',
+            'prices': 'price_tracking',
+            'price_tracking': 'price_tracking',
+            'pricetracking': 'price_tracking',
+            'crypto': 'price_tracking',
+            'stock': 'stock_market',
+            'stocks': 'stock_market',
+            'stock_market': 'stock_market',
+            'stockmarket': 'stock_market',
+            'stonks': 'stock_market'
         }
         
         if setting_name not in setting_map:
@@ -301,6 +349,14 @@ class SettingsManager:
   Values: true/false, on/off, enable/disable
   Example: `?setting web_search enable`
 
+• **price_tracking** (or: price, prices, crypto) - Toggle cryptocurrency price tracking
+  Values: true/false, on/off, enable/disable
+  Example: `?setting price_tracking on`
+
+• **stock_market** (or: stock, stocks, stonks) - Toggle stock market data feature
+  Values: true/false, on/off, enable/disable
+  Example: `?setting stocks enable`
+
 **Whitelist Management:**
 • `?setting whitelist add <username>` - Add user to invite whitelist
 • `?setting whitelist remove <username>` - Remove user from invite whitelist
@@ -333,6 +389,14 @@ Example: `?setting whitelist add @user:matrix.org`"""
         # Web search
         web_search = self.is_web_search_enabled()
         settings_text += f"• **Web Search**: `{'enabled' if web_search else 'disabled'}`\n"
+        
+        # Price tracking
+        price_tracking = self.is_price_tracking_enabled()
+        settings_text += f"• **Price Tracking**: `{'enabled' if price_tracking else 'disabled'}`\n"
+        
+        # Stock market
+        stock_market = self.is_stock_market_enabled()
+        settings_text += f"• **Stock Market Data**: `{'enabled' if stock_market else 'disabled'}`\n"
         
         # Invite whitelist
         settings_text += f"\n**Invite Whitelist** ({len(self.invite_whitelist)} users):\n"
