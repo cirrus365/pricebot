@@ -4,6 +4,7 @@ import html
 import time
 import json
 import os
+import asyncio
 from datetime import datetime
 from asyncio import Queue, QueueFull
 from nio import MatrixRoom, RoomMessageText
@@ -25,6 +26,10 @@ request_queue = Queue(maxsize=MAX_QUEUE_SIZE)
 PROCESSED_EVENTS_FILE = ".processed_events.json"
 processed_events = set()
 bot_start_time = time.time()
+
+# Track last activity time for idle detection
+last_activity_time = time.time()
+idle_threshold = 1800  # 30 minutes in seconds
 
 def load_processed_events():
     """Load processed event IDs from file"""
@@ -138,13 +143,39 @@ async def send_formatted_message(client, room_id, reply_text):
     
     return result
 
+async def refresh_connection_if_idle(client):
+    """Refresh the connection if we've been idle for too long"""
+    global last_activity_time
+    
+    current_time = time.time()
+    idle_time = current_time - last_activity_time
+    
+    if idle_time > idle_threshold:
+        print(f"[DEBUG] Been idle for {idle_time:.0f} seconds, refreshing connection...")
+        try:
+            # Do a quick sync to refresh the connection
+            await asyncio.wait_for(
+                client.sync(timeout=10000, full_state=False),
+                timeout=15.0
+            )
+            print("[DEBUG] Connection refreshed successfully")
+        except asyncio.TimeoutError:
+            print("[WARNING] Connection refresh timed out")
+        except Exception as e:
+            print(f"[WARNING] Failed to refresh connection: {e}")
+
 async def message_callback(client, room: MatrixRoom, event: RoomMessageText):
     """Handle incoming messages"""
+    global last_activity_time
+    
     print(f"[DEBUG] Message callback triggered!")
     print(f"[DEBUG] Room ID: {room.room_id}")
     print(f"[DEBUG] Sender: {event.sender}, Bot ID: {client.user_id}")
     print(f"[DEBUG] Message: {event.body}")
     print(f"[DEBUG] Event ID: {event.event_id}")
+    
+    # Update last activity time
+    last_activity_time = time.time()
     
     # Check if we've already processed this event
     if event.event_id in processed_events:
@@ -267,6 +298,9 @@ async def message_callback(client, room: MatrixRoom, event: RoomMessageText):
     )
     
     if should_respond:
+        # Refresh connection if we've been idle
+        await refresh_connection_if_idle(client)
+        
         # Check for reset command
         if "!reset" in event.body.lower():
             # Clear the room's message history

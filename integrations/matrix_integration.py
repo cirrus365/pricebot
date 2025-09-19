@@ -71,33 +71,58 @@ async def maintain_connection_health(client):
     """Maintain connection health and preload models"""
     last_activity = time.time()
     last_model_warm = time.time()
+    last_full_sync = time.time()
+    consecutive_failures = 0
     
     while True:
         try:
-            await asyncio.sleep(120)  # Check every 2 minutes
+            # Check more frequently - every 30 seconds instead of 2 minutes
+            await asyncio.sleep(30)
             current_time = time.time()
             time_since_activity = current_time - last_activity
             time_since_warm = current_time - last_model_warm
+            time_since_full_sync = current_time - last_full_sync
             
-            # If no activity for 4 minutes, do a lightweight sync to keep connection alive
-            if time_since_activity > 240:
+            # If no activity for 1 minute, do a lightweight sync to keep connection alive
+            if time_since_activity > 60:
                 logger.debug("Performing keep-alive sync...")
                 try:
-                    sync_response = await client.sync(timeout=5000, full_state=False)
+                    # Use shorter timeout for keep-alive
+                    sync_response = await client.sync(timeout=10000, full_state=False)
                     if sync_response:
                         last_activity = current_time
+                        consecutive_failures = 0
                         logger.debug("Keep-alive sync successful")
                 except Exception as e:
-                    logger.warning(f"Keep-alive sync failed: {e}")
-                    # Try to recover connection
-                    try:
-                        await client.sync(timeout=10000, full_state=False)
-                        last_activity = current_time
-                    except:
-                        logger.error("Failed to recover connection")
+                    consecutive_failures += 1
+                    logger.warning(f"Keep-alive sync failed (attempt {consecutive_failures}): {e}")
                     
-            # For Ollama: Send a tiny request every 3 minutes to keep model warm
-            if LLM_PROVIDER == "ollama" and time_since_warm > 180:  # 3 minutes
+                    # If multiple failures, try to refresh the connection
+                    if consecutive_failures >= 2:
+                        logger.info("Multiple sync failures detected, refreshing connection...")
+                        try:
+                            # Do a full sync with short timeout to refresh state
+                            await client.sync(timeout=15000, full_state=True)
+                            last_activity = current_time
+                            last_full_sync = current_time
+                            consecutive_failures = 0
+                            logger.info("Connection refresh successful")
+                        except Exception as refresh_error:
+                            logger.error(f"Failed to refresh connection: {refresh_error}")
+                            # Don't give up, will retry on next iteration
+            
+            # Do a full sync every 10 minutes to ensure we have fresh state
+            if time_since_full_sync > 600:  # 10 minutes
+                logger.debug("Performing periodic full sync...")
+                try:
+                    await client.sync(timeout=15000, full_state=True)
+                    last_full_sync = current_time
+                    logger.debug("Periodic full sync successful")
+                except Exception as e:
+                    logger.warning(f"Periodic full sync failed: {e}")
+                    
+            # For Ollama: Send a tiny request every 2 minutes to keep model warm
+            if LLM_PROVIDER == "ollama" and time_since_warm > 120:  # 2 minutes instead of 3
                 logger.debug("Warming up Ollama model...")
                 try:
                     from modules.llm import call_ollama_api
@@ -115,8 +140,8 @@ async def maintain_connection_health(client):
                     
         except Exception as e:
             logger.error(f"Connection health monitor error: {e}")
-            # Don't crash the monitor, just continue
-            await asyncio.sleep(60)
+            # Don't crash the monitor, just continue with shorter sleep
+            await asyncio.sleep(15)
 
 async def run_matrix_bot():
     """Run the Matrix bot"""
@@ -133,11 +158,12 @@ async def run_matrix_bot():
         print("  - MATRIX_PASSWORD")
         return
     
-    # Set up client configuration
+    # Set up client configuration with better timeout handling
     config = AsyncClientConfig(
         max_limit_exceeded=0,
         max_timeouts=0,
         encryption_enabled=False,
+        request_timeout=30,  # 30 second timeout for requests
     )
     
     # Create client
@@ -241,15 +267,17 @@ async def run_matrix_bot():
         print("🧹 Auto-cleanup: Hourly context cleanup to maintain performance")
         print("📉 Reduced context: Optimized for faster response times")
         print("🔁 Duplicate prevention: Won't respond to old messages on restart")
-        print("🔌 Connection keepalive: Active monitoring to prevent timeouts")
+        print("🔌 Connection keepalive: Active monitoring every 30 seconds")
+        print("🔄 Full sync refresh: Every 10 minutes to maintain fresh state")
         if LLM_PROVIDER == "ollama":
-            print(f"🔥 Ollama model warming: Every 3 minutes (keep-alive: {OLLAMA_KEEP_ALIVE})")
+            print(f"🔥 Ollama model warming: Every 2 minutes (keep-alive: {OLLAMA_KEEP_ALIVE})")
         print("=" * 50)
         
-        # Sync forever with longer timeout for better stability
+        # Sync forever with optimized timeout for better responsiveness
         await client.sync_forever(
-            timeout=60000,  # 60 seconds instead of 30
-            full_state=False  # Don't request full state on every sync
+            timeout=30000,  # 30 seconds - balanced for responsiveness
+            full_state=False,  # Don't request full state on every sync
+            since=sync_response.next_batch  # Continue from where we left off
         )
             
     except Exception as e:
@@ -836,9 +864,10 @@ async def handle_stats_command(client, room, event):
         
         # Add connection health status
         stats_text += f"\n\n**🔌 Connection Health:**"
-        stats_text += f"\n• Keep-alive: Active (2-minute intervals)"
+        stats_text += f"\n• Keep-alive: Active (30-second intervals)"
+        stats_text += f"\n• Full sync refresh: Every 10 minutes"
         if LLM_PROVIDER == "ollama":
-            stats_text += f"\n• Model warming: Active (3-minute intervals)"
+            stats_text += f"\n• Model warming: Active (2-minute intervals)"
 
         # Send stats message with formatting
         await send_message(
