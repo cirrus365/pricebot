@@ -174,6 +174,9 @@ async def message_callback(client, room: MatrixRoom, event: RoomMessageText):
     )
     
     if should_respond:
+        # Start typing indicator
+        await client.room_typing(room.room_id, typing_state=True)
+        
         # Check for reset command
         if "!reset" in event.body.lower():
             if ENABLE_CONTEXT_ANALYSIS:
@@ -187,6 +190,8 @@ async def message_callback(client, room: MatrixRoom, event: RoomMessageText):
                     "body": f"✨ Context cleared!"
                 }
             )
+            # Stop typing indicator
+            await client.room_typing(room.room_id, typing_state=False)
             return
         
         prompt = event.body
@@ -213,6 +218,9 @@ async def message_callback(client, room: MatrixRoom, event: RoomMessageText):
             # Send the response
             await send_formatted_message(client, room.room_id, reply)
             
+            # Stop typing indicator after sending
+            await client.room_typing(room.room_id, typing_state=False)
+            
             # Store bot's message if context is enabled
             if ENABLE_CONTEXT_ANALYSIS and hasattr(reply, 'event_id'):
                 bot_message_data = {
@@ -224,6 +232,9 @@ async def message_callback(client, room: MatrixRoom, event: RoomMessageText):
                 room_message_history[room.room_id].append(bot_message_data)
             
         except Exception as e:
+            # Stop typing indicator on error
+            await client.room_typing(room.room_id, typing_state=False)
+            
             await client.room_send(
                 room_id=room.room_id,
                 message_type="m.room.message",

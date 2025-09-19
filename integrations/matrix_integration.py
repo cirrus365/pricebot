@@ -250,6 +250,9 @@ async def send_message(client, room_id: str, content: dict):
 async def handle_help_command(client, room, event):
     """Handle help command for Matrix"""
     try:
+        # Start typing indicator
+        await client.room_typing(room.room_id, typing_state=True)
+        
         stats_tracker.record_command_usage('?help')
         
         help_text = f"""📚 **{BOT_USERNAME.capitalize()} Bot - Available Commands**
@@ -285,12 +288,20 @@ async def handle_help_command(client, room, event):
             }
         )
         
+        # Stop typing indicator
+        await client.room_typing(room.room_id, typing_state=False)
+        
     except Exception as e:
+        # Stop typing indicator on error
+        await client.room_typing(room.room_id, typing_state=False)
         logger.error(f"Error handling help command: {e}")
 
 async def handle_clock_command(client, room, event):
     """Handle world clock command for Matrix"""
     try:
+        # Start typing indicator
+        await client.room_typing(room.room_id, typing_state=True)
+        
         stats_tracker.record_command_usage('?clock')
         
         parts = event.body.strip().split(maxsplit=1)
@@ -312,12 +323,20 @@ async def handle_clock_command(client, room, event):
         
         stats_tracker.record_message_sent(room.room_id)
         
+        # Stop typing indicator
+        await client.room_typing(room.room_id, typing_state=False)
+        
     except Exception as e:
+        # Stop typing indicator on error
+        await client.room_typing(room.room_id, typing_state=False)
         logger.error(f"Error handling clock command: {e}")
 
 async def handle_price_command(client, room, event):
     """Handle price command for Matrix"""
     try:
+        # Start typing indicator
+        await client.room_typing(room.room_id, typing_state=True)
+        
         if not ENABLE_PRICE_TRACKING:
             await send_message(
                 client,
@@ -327,6 +346,8 @@ async def handle_price_command(client, room, event):
                     "body": "Price tracking is disabled."
                 }
             )
+            # Stop typing indicator
+            await client.room_typing(room.room_id, typing_state=False)
             return
         
         stats_tracker.record_command_usage('?price')
@@ -353,12 +374,20 @@ async def handle_price_command(client, room, event):
         
         stats_tracker.record_message_sent(room.room_id)
         
+        # Stop typing indicator
+        await client.room_typing(room.room_id, typing_state=False)
+        
     except Exception as e:
+        # Stop typing indicator on error
+        await client.room_typing(room.room_id, typing_state=False)
         logger.error(f"Error handling price command: {e}")
 
 async def handle_meme_command(client, room, event):
     """Handle meme generation command for Matrix"""
     try:
+        # Start typing indicator
+        await client.room_typing(room.room_id, typing_state=True)
+        
         if not settings_manager.is_meme_enabled():
             await send_message(
                 client,
@@ -368,6 +397,8 @@ async def handle_meme_command(client, room, event):
                     "body": "Meme generation is disabled."
                 }
             )
+            # Stop typing indicator
+            await client.room_typing(room.room_id, typing_state=False)
             return
         
         stats_tracker.record_command_usage('?meme')
@@ -399,13 +430,21 @@ async def handle_meme_command(client, room, event):
                     "body": caption or "Failed to generate meme"
                 }
             )
+        
+        # Stop typing indicator
+        await client.room_typing(room.room_id, typing_state=False)
             
     except Exception as e:
+        # Stop typing indicator on error
+        await client.room_typing(room.room_id, typing_state=False)
         logger.error(f"Error handling meme command: {e}")
 
 async def handle_stonks_command(client, room, event):
     """Handle stock market command for Matrix"""
     try:
+        # Start typing indicator
+        await client.room_typing(room.room_id, typing_state=True)
+        
         if not ENABLE_STOCK_MARKET:
             await send_message(
                 client,
@@ -415,6 +454,8 @@ async def handle_stonks_command(client, room, event):
                     "body": "Stock tracking is disabled."
                 }
             )
+            # Stop typing indicator
+            await client.room_typing(room.room_id, typing_state=False)
             return
         
         stats_tracker.record_command_usage('?stonks')
@@ -441,12 +482,20 @@ async def handle_stonks_command(client, room, event):
         
         stats_tracker.record_message_sent(room.room_id)
         
+        # Stop typing indicator
+        await client.room_typing(room.room_id, typing_state=False)
+        
     except Exception as e:
+        # Stop typing indicator on error
+        await client.room_typing(room.room_id, typing_state=False)
         logger.error(f"Error handling stonks command: {e}")
 
 async def handle_setting_command(client, room, event):
     """Handle setting command for Matrix"""
     try:
+        # Start typing indicator
+        await client.room_typing(room.room_id, typing_state=True)
+        
         stats_tracker.record_command_usage('?setting')
         
         parts = event.body.strip().split(maxsplit=1)
@@ -470,12 +519,20 @@ async def handle_setting_command(client, room, event):
         
         stats_tracker.record_message_sent(room.room_id)
         
+        # Stop typing indicator
+        await client.room_typing(room.room_id, typing_state=False)
+        
     except Exception as e:
+        # Stop typing indicator on error
+        await client.room_typing(room.room_id, typing_state=False)
         logger.error(f"Error handling setting command: {e}")
 
 async def handle_sys_command(client, room, event):
     """Handle system resource monitor command for Matrix"""
     try:
+        # Start typing indicator
+        await client.room_typing(room.room_id, typing_state=True)
+        
         stats_tracker.record_command_usage('?sys')
         
         response = system_monitor.get_system_info()
@@ -494,12 +551,20 @@ async def handle_sys_command(client, room, event):
         
         stats_tracker.record_message_sent(room.room_id)
         
+        # Stop typing indicator
+        await client.room_typing(room.room_id, typing_state=False)
+        
     except Exception as e:
+        # Stop typing indicator on error
+        await client.room_typing(room.room_id, typing_state=False)
         logger.error(f"Error handling sys command: {e}")
 
 async def handle_stats_command(client, room, event):
     """Handle stats command for Matrix"""
     try:
+        # Start typing indicator
+        await client.room_typing(room.room_id, typing_state=True)
+        
         stats_tracker.record_command_usage('?stats')
         
         uptime = stats_tracker.get_uptime()
@@ -534,5 +599,10 @@ async def handle_stats_command(client, room, event):
         
         stats_tracker.record_message_sent(room.room_id)
         
+        # Stop typing indicator
+        await client.room_typing(room.room_id, typing_state=False)
+        
     except Exception as e:
+        # Stop typing indicator on error
+        await client.room_typing(room.room_id, typing_state=False)
         logger.error(f"Error handling stats command: {e}")
