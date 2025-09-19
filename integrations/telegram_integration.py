@@ -194,6 +194,11 @@ class TelegramBot:
         if not self.is_authorized(update):
             await update.message.reply_text("❌ Sorry, you're not authorized to use this bot.")
             return
+        
+        # Check if stock tracking is enabled
+        if not settings_manager.get_setting_value('stock_tracking'):
+            await update.message.reply_text("Stock tracking feature is not enabled. An authorized user can enable it with: /setting stock_tracking on")
+            return
             
         # Send typing indicator
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
@@ -225,7 +230,7 @@ class TelegramBot:
             return
             
         if not settings_manager.is_meme_enabled():
-            await update.message.reply_text("Meme generation is currently disabled. An authorized user can enable it with: /setting meme on")
+            await update.message.reply_text("Meme generation feature is not enabled. An authorized user can enable it with: /setting meme on")
             return
             
         if not context.args:
@@ -264,6 +269,11 @@ class TelegramBot:
         if not self.is_authorized(update):
             await update.message.reply_text("❌ Sorry, you're not authorized to use this bot.")
             return
+        
+        # Check if price tracking is enabled
+        if not settings_manager.get_setting_value('price_tracking'):
+            await update.message.reply_text("Price tracking feature is not enabled. An authorized user can enable it with: /setting price_tracking on")
+            return
             
         # Send typing indicator
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
@@ -279,6 +289,11 @@ class TelegramBot:
             
     async def xmr_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /xmr command - quick Monero price check"""
+        # Check if price tracking is enabled
+        if not settings_manager.get_setting_value('price_tracking'):
+            await update.message.reply_text("Price tracking feature is not enabled. An authorized user can enable it with: /setting price_tracking on")
+            return
+        
         context.args = ["XMR"]
         await self.price_command(update, context)
         
@@ -289,7 +304,7 @@ class TelegramBot:
             return
         
         if not settings_manager.is_web_search_enabled():
-            await update.message.reply_text("Web search is currently disabled. An authorized user can enable it with: /setting search on")
+            await update.message.reply_text("Web search feature is not enabled. An authorized user can enable it with: /setting search on")
             return
             
         if not context.args:
@@ -329,6 +344,8 @@ class TelegramBot:
             f"*Features:*\n"
             f"• Meme Generation: {'✅ Enabled' if settings_manager.is_meme_enabled() else '❌ Disabled'}\n"
             f"• Web Search: {'✅ Enabled' if settings_manager.is_web_search_enabled() else '❌ Disabled'}\n"
+            f"• Price Tracking: {'✅ Enabled' if settings_manager.get_setting_value('price_tracking') else '❌ Disabled'}\n"
+            f"• Stock Tracking: {'✅ Enabled' if settings_manager.get_setting_value('stock_tracking') else '❌ Disabled'}\n"
             f"• Auto-Invite: {'✅ Enabled' if settings_manager.is_auto_invite_enabled() else '❌ Disabled'}\n\n"
             f"*LLM Settings:*\n"
             f"• Main Model: {settings_manager.get_setting_value('main_llm')}\n"

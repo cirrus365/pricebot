@@ -25,6 +25,7 @@ from modules.stock_tracker import stock_tracker
 from modules.web_search import search_with_jina, needs_web_search
 from modules.meme_generator import meme_generator
 from modules.world_clock import world_clock
+from modules.settings_manager import settings_manager
 from utils.helpers import extract_urls_from_message, detect_code_in_message
 
 logger = logging.getLogger(__name__)
@@ -195,7 +196,9 @@ class TwilioBot:
                 return await world_clock.handle_clock_command(location)
             
             # Check for meme command
-            if message.startswith('?meme ') and ENABLE_MEME_GENERATION:
+            if message.startswith('?meme '):
+                if not settings_manager.is_meme_enabled():
+                    return "Meme generation feature is not enabled. An authorized user can enable it with: ?setting meme on"
                 # Convert ?meme to !meme for the meme generator
                 meme_command = message.replace('?meme', '!meme', 1)
                 meme_url, caption = await meme_generator.handle_meme_command(meme_command)
@@ -246,7 +249,9 @@ class TwilioBot:
             location = ' '.join(cmd_parts[1:]) if len(cmd_parts) > 1 else ""
             return await world_clock.handle_clock_command(location)
         
-        elif cmd == '?price' and ENABLE_PRICE_TRACKING:
+        elif cmd == '?price':
+            if not settings_manager.get_setting_value('price_tracking'):
+                return "Price tracking feature is not enabled. An authorized user can enable it with: ?setting price_tracking on"
             if len(cmd_parts) > 1:
                 query = ' '.join(cmd_parts[1:])
                 price_response = await price_tracker.get_price_response(f"price {query}")
@@ -255,6 +260,8 @@ class TwilioBot:
                 return "Usage: ?price <crypto> [currency] or ?price <from> <to>\nExamples: ?price xmr usd, ?price btc, ?price usd aud"
         
         elif cmd == '?stonks':
+            if not settings_manager.get_setting_value('stock_tracking'):
+                return "Stock tracking feature is not enabled. An authorized user can enable it with: ?setting stock_tracking on"
             if len(cmd_parts) > 1:
                 ticker = cmd_parts[1]
                 stock_response = await stock_tracker.get_stock_info(ticker)
@@ -290,14 +297,15 @@ class TwilioBot:
             "?reset - Clear conversation history\n"
         )
         
-        if ENABLE_PRICE_TRACKING:
+        if settings_manager.get_setting_value('price_tracking'):
             base_help += "?price <crypto> [currency] - Get cryptocurrency price\n"
             base_help += "?price <from> <to> - Get exchange rate\n"
         
-        base_help += "?stonks <ticker> - Get stock market data\n"
-        base_help += "?stonks - Get global market summary\n"
+        if settings_manager.get_setting_value('stock_tracking'):
+            base_help += "?stonks <ticker> - Get stock market data\n"
+            base_help += "?stonks - Get global market summary\n"
         
-        if ENABLE_MEME_GENERATION:
+        if settings_manager.is_meme_enabled():
             base_help += "?meme <topic> - Generate a meme with AI captions\n"
         
         base_help += "\nJust send me a message to chat!"
@@ -379,13 +387,14 @@ async def run_twilio_bot():
     
     logger.info("  World clock: ?clock <city/country> for world time")
     
-    if ENABLE_MEME_GENERATION:
+    if settings_manager.is_meme_enabled():
         logger.info("  Meme generation: ?meme <topic> command enabled")
     
-    if ENABLE_PRICE_TRACKING:
+    if settings_manager.get_setting_value('price_tracking'):
         logger.info("  Price queries: ?price <crypto> [currency] or ?price <from> <to>")
     
-    logger.info("  Stock market: ?stonks <ticker> for stock data")
+    if settings_manager.get_setting_value('stock_tracking'):
+        logger.info("  Stock market: ?stonks <ticker> for stock data")
     
     # Create and run the bot
     bot = TwilioBot()

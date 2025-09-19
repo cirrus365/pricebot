@@ -275,6 +275,11 @@ class ChatbotCommands(commands.Cog):
     @commands.command(name='stonks', help='Get stock market information')
     async def stonks_command(self, ctx, *, ticker: str = None):
         """Get stock market data"""
+        # Check if stock tracking is enabled
+        if not settings_manager.get_setting_value('stock_tracking'):
+            await ctx.send("Stock tracking feature is not enabled. An authorized user can enable it with: `?setting stock_tracking on`")
+            return
+        
         async with ctx.typing():
             if not ticker:
                 # Get market summary
@@ -296,7 +301,7 @@ class ChatbotCommands(commands.Cog):
     async def meme_command(self, ctx, *, topic: str = None):
         """Generate a meme based on user input"""
         if not settings_manager.is_meme_enabled():
-            await ctx.send("Meme generation is currently disabled. An authorized user can enable it with: `?setting meme on`")
+            await ctx.send("Meme generation feature is not enabled. An authorized user can enable it with: `?setting meme on`")
             return
             
         if not topic:
@@ -323,6 +328,11 @@ class ChatbotCommands(commands.Cog):
     @commands.command(name='price', help='Get cryptocurrency prices or exchange rates')
     async def price_command(self, ctx, *, query: str = "XMR"):
         """Get cryptocurrency price or exchange rate"""
+        # Check if price tracking is enabled
+        if not settings_manager.get_setting_value('price_tracking'):
+            await ctx.send("Price tracking feature is not enabled. An authorized user can enable it with: `?setting price_tracking on`")
+            return
+        
         async with ctx.typing():
             response = await price_tracker.get_price_response(f"price {query}")
             if response:
@@ -338,6 +348,11 @@ class ChatbotCommands(commands.Cog):
     @commands.command(name='xmr', help='Get Monero price')
     async def xmr_command(self, ctx):
         """Quick command for Monero price"""
+        # Check if price tracking is enabled
+        if not settings_manager.get_setting_value('price_tracking'):
+            await ctx.send("Price tracking feature is not enabled. An authorized user can enable it with: `?setting price_tracking on`")
+            return
+        
         await self.price_command(ctx, query="XMR")
         
     @commands.command(name='stats', help='Show bot statistics')
@@ -382,6 +397,18 @@ class ChatbotCommands(commands.Cog):
         embed.add_field(
             name="Web Search",
             value="✅ Enabled" if settings_manager.is_web_search_enabled() else "❌ Disabled",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="Price Tracking",
+            value="✅ Enabled" if settings_manager.get_setting_value('price_tracking') else "❌ Disabled",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="Stock Tracking",
+            value="✅ Enabled" if settings_manager.get_setting_value('stock_tracking') else "❌ Disabled",
             inline=True
         )
         

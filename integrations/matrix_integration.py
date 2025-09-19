@@ -83,8 +83,8 @@ async def process_message(client, room, event):
     # Check if it's a price command
     elif event.body.startswith('?price'):
         await handle_price_command(client, room, event)
-    # Check if it's a meme command - check runtime setting
-    elif event.body.startswith('?meme ') and settings_manager.is_meme_enabled():
+    # Check if it's a meme command
+    elif event.body.startswith('?meme'):
         await handle_meme_command(client, room, event)
     # Check if it's a stats command
     elif event.body.strip() == '?stats':
@@ -384,6 +384,18 @@ async def handle_clock_command(client, room, event):
 async def handle_price_command(client, room, event):
     """Handle price command for Matrix"""
     try:
+        # Check if price tracking is enabled
+        if not settings_manager.get_setting_value('price_tracking'):
+            await send_message(
+                client,
+                room.room_id,
+                {
+                    "msgtype": "m.text",
+                    "body": "Price tracking feature is not enabled. An authorized user can enable it with: ?setting price_tracking on"
+                }
+            )
+            return
+        
         # Track command usage
         stats_tracker.record_command_usage('?price')
         stats_tracker.record_feature_usage('price_tracking')
@@ -455,7 +467,7 @@ async def handle_meme_command(client, room, event):
                 room.room_id,
                 {
                     "msgtype": "m.text",
-                    "body": "Meme generation is currently disabled. An authorized user can enable it with: ?setting meme on"
+                    "body": "Meme generation feature is not enabled. An authorized user can enable it with: ?setting meme on"
                 }
             )
             return
@@ -515,6 +527,18 @@ async def handle_meme_command(client, room, event):
 async def handle_stonks_command(client, room, event):
     """Handle stock market command for Matrix"""
     try:
+        # Check if stock tracking is enabled
+        if not settings_manager.get_setting_value('stock_tracking'):
+            await send_message(
+                client,
+                room.room_id,
+                {
+                    "msgtype": "m.text",
+                    "body": "Stock tracking feature is not enabled. An authorized user can enable it with: ?setting stock_tracking on"
+                }
+            )
+            return
+        
         # Track command usage
         stats_tracker.record_command_usage('?stonks')
         stats_tracker.record_feature_usage('stock_tracking')
@@ -692,14 +716,19 @@ async def handle_stats_command(client, room, event):
         stats_text += "\n\n**🎯 Enabled Features:**"
         features_list = []
         
-        if ENABLE_PRICE_TRACKING:
+        if settings_manager.get_setting_value('price_tracking'):
             features_list.append("✅ Price Tracking")
+        else:
+            features_list.append("❌ Price Tracking (disabled)")
         if settings_manager.is_meme_enabled():
             features_list.append("✅ Meme Generation")
         else:
             features_list.append("❌ Meme Generation (disabled)")
+        if settings_manager.get_setting_value('stock_tracking'):
+            features_list.append("✅ Stock Market Data")
+        else:
+            features_list.append("❌ Stock Market Data (disabled)")
         features_list.append("✅ World Clock")
-        features_list.append("✅ Stock Market Data")
         features_list.append("✅ URL Analysis")
         if settings_manager.is_web_search_enabled():
             features_list.append("✅ Web Search")
