@@ -31,6 +31,12 @@ MATRIX_STORE_PATH = os.getenv("MATRIX_STORE_PATH", "./matrix_store")
 ENABLE_AUTO_INVITE = os.getenv("ENABLE_AUTO_INVITE", "true").lower() == "true"
 ALLOWED_INVITE_USERS = os.getenv("ALLOWED_INVITE_USERS", "").split(",") if os.getenv("ALLOWED_INVITE_USERS") else []
 
+# Matrix Performance Settings
+MATRIX_SYNC_TIMEOUT = int(os.getenv("MATRIX_SYNC_TIMEOUT", "10000"))  # 10 seconds default
+MATRIX_REQUEST_TIMEOUT = int(os.getenv("MATRIX_REQUEST_TIMEOUT", "20"))  # 20 seconds default
+MATRIX_KEEPALIVE_INTERVAL = int(os.getenv("MATRIX_KEEPALIVE_INTERVAL", "60"))  # 60 seconds default
+MATRIX_FULL_SYNC_INTERVAL = int(os.getenv("MATRIX_FULL_SYNC_INTERVAL", "1800"))  # 30 minutes default
+
 # Discord credentials - no defaults for sensitive data
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 DISCORD_COMMAND_PREFIX = os.getenv("DISCORD_COMMAND_PREFIX", "!")
@@ -72,11 +78,12 @@ OPENROUTER_FALLBACK_MODEL = os.getenv("OPENROUTER_FALLBACK_MODEL", "")  # Option
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama2")
 OLLAMA_KEEP_ALIVE = os.getenv("OLLAMA_KEEP_ALIVE", "5m")  # How long to keep model loaded in memory
-OLLAMA_NUM_PREDICT = int(os.getenv("OLLAMA_NUM_PREDICT", "1000"))  # Max tokens to generate
+OLLAMA_NUM_PREDICT = int(os.getenv("OLLAMA_NUM_PREDICT", "500"))  # Reduced from 1000 for faster responses
 OLLAMA_TEMPERATURE = float(os.getenv("OLLAMA_TEMPERATURE", "0.8"))  # Temperature for generation
 OLLAMA_TOP_K = int(os.getenv("OLLAMA_TOP_K", "40"))  # Top-k sampling
 OLLAMA_TOP_P = float(os.getenv("OLLAMA_TOP_P", "0.9"))  # Top-p (nucleus) sampling
 OLLAMA_REPEAT_PENALTY = float(os.getenv("OLLAMA_REPEAT_PENALTY", "1.1"))  # Penalize repetition
+OLLAMA_WARM_INTERVAL = int(os.getenv("OLLAMA_WARM_INTERVAL", "300"))  # 5 minutes between warm-ups
 
 # Jina.ai config - no defaults for API keys
 JINA_API_KEY = os.getenv("JINA_API_KEY")
@@ -96,18 +103,19 @@ KNOWN_BOTS = os.getenv("KNOWN_BOTS", "").split(",") if os.getenv("KNOWN_BOTS") e
 MAX_QUEUE_SIZE = int(os.getenv("MAX_QUEUE_SIZE", "5"))
 
 # Timeout settings
-LLM_TIMEOUT = int(os.getenv("LLM_TIMEOUT", "30"))
-SEARCH_TIMEOUT = int(os.getenv("SEARCH_TIMEOUT", "15"))
-URL_FETCH_TIMEOUT = int(os.getenv("URL_FETCH_TIMEOUT", "20"))
-PRICE_FETCH_TIMEOUT = int(os.getenv("PRICE_FETCH_TIMEOUT", "10"))
+LLM_TIMEOUT = int(os.getenv("LLM_TIMEOUT", "20"))  # Reduced from 30
+SEARCH_TIMEOUT = int(os.getenv("SEARCH_TIMEOUT", "10"))  # Reduced from 15
+URL_FETCH_TIMEOUT = int(os.getenv("URL_FETCH_TIMEOUT", "10"))  # Reduced from 20
+PRICE_FETCH_TIMEOUT = int(os.getenv("PRICE_FETCH_TIMEOUT", "5"))  # Reduced from 10
 
-# Context settings
-MAX_ROOM_HISTORY = int(os.getenv("MAX_ROOM_HISTORY", "100"))
-MAX_CONTEXT_LOOKBACK = int(os.getenv("MAX_CONTEXT_LOOKBACK", "30"))
-MAX_IMPORTANT_MESSAGES = int(os.getenv("MAX_IMPORTANT_MESSAGES", "20"))
+# Context settings - SIMPLIFIED
+MAX_ROOM_HISTORY = int(os.getenv("MAX_ROOM_HISTORY", "20"))  # Reduced from 100
+MAX_CONTEXT_LOOKBACK = int(os.getenv("MAX_CONTEXT_LOOKBACK", "5"))  # Reduced from 30
+MAX_IMPORTANT_MESSAGES = int(os.getenv("MAX_IMPORTANT_MESSAGES", "3"))  # Reduced from 20
+ENABLE_CONTEXT_ANALYSIS = os.getenv("ENABLE_CONTEXT_ANALYSIS", "false").lower() == "true"  # Disabled by default
 
 # Retry settings
-MAX_RETRIES = int(os.getenv("MAX_RETRIES", "3"))
+MAX_RETRIES = int(os.getenv("MAX_RETRIES", "2"))  # Reduced from 3
 BASE_RETRY_DELAY = int(os.getenv("BASE_RETRY_DELAY", "1"))
 
 # Price tracking settings
@@ -116,3 +124,6 @@ ENABLE_PRICE_TRACKING = os.getenv("ENABLE_PRICE_TRACKING", "true").lower() == "t
 
 # Stock market settings
 ENABLE_STOCK_MARKET = os.getenv("ENABLE_STOCK_MARKET", "true").lower() == "true"
+
+# Web search settings
+ENABLE_WEB_SEARCH = os.getenv("ENABLE_WEB_SEARCH", "false").lower() == "true"  # Disabled by default for speed

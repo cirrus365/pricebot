@@ -18,7 +18,9 @@ from nio import (
 from config.settings import (
     HOMESERVER, USERNAME, PASSWORD, BOT_USERNAME, ENABLE_MEME_GENERATION,
     ENABLE_PRICE_TRACKING, ENABLE_STOCK_MARKET, INTEGRATIONS, LLM_PROVIDER, OPENROUTER_MODEL,
-    OLLAMA_MODEL, MAX_ROOM_HISTORY, MAX_CONTEXT_LOOKBACK, OLLAMA_KEEP_ALIVE
+    OLLAMA_MODEL, MAX_ROOM_HISTORY, MAX_CONTEXT_LOOKBACK, OLLAMA_KEEP_ALIVE,
+    MATRIX_SYNC_TIMEOUT, MATRIX_REQUEST_TIMEOUT, MATRIX_KEEPALIVE_INTERVAL,
+    MATRIX_FULL_SYNC_INTERVAL, OLLAMA_WARM_INTERVAL, ENABLE_WEB_SEARCH
 )
 
 logger = logging.getLogger(__name__)
@@ -67,81 +69,39 @@ def initialize_handlers():
     settings_manager = sm
     system_monitor = sysm
 
-async def maintain_connection_health(client):
-    """Maintain connection health and preload models"""
-    last_activity = time.time()
-    last_model_warm = time.time()
-    last_full_sync = time.time()
-    consecutive_failures = 0
+async def simple_keepalive(client):
+    """Simple keepalive to maintain connection"""
+    last_sync = time.time()
+    last_warm = time.time()
     
     while True:
         try:
-            # Check more frequently - every 30 seconds instead of 2 minutes
-            await asyncio.sleep(30)
+            await asyncio.sleep(MATRIX_KEEPALIVE_INTERVAL)
             current_time = time.time()
-            time_since_activity = current_time - last_activity
-            time_since_warm = current_time - last_model_warm
-            time_since_full_sync = current_time - last_full_sync
             
-            # If no activity for 1 minute, do a lightweight sync to keep connection alive
-            if time_since_activity > 60:
-                logger.debug("Performing keep-alive sync...")
+            # Simple sync to keep connection alive
+            if current_time - last_sync > MATRIX_KEEPALIVE_INTERVAL:
                 try:
-                    # Use shorter timeout for keep-alive
-                    sync_response = await client.sync(timeout=10000, full_state=False)
-                    if sync_response:
-                        last_activity = current_time
-                        consecutive_failures = 0
-                        logger.debug("Keep-alive sync successful")
+                    await client.sync(timeout=MATRIX_SYNC_TIMEOUT, full_state=False)
+                    last_sync = current_time
                 except Exception as e:
-                    consecutive_failures += 1
-                    logger.warning(f"Keep-alive sync failed (attempt {consecutive_failures}): {e}")
-                    
-                    # If multiple failures, try to refresh the connection
-                    if consecutive_failures >= 2:
-                        logger.info("Multiple sync failures detected, refreshing connection...")
-                        try:
-                            # Do a full sync with short timeout to refresh state
-                            await client.sync(timeout=15000, full_state=True)
-                            last_activity = current_time
-                            last_full_sync = current_time
-                            consecutive_failures = 0
-                            logger.info("Connection refresh successful")
-                        except Exception as refresh_error:
-                            logger.error(f"Failed to refresh connection: {refresh_error}")
-                            # Don't give up, will retry on next iteration
+                    logger.debug(f"Keepalive sync failed: {e}")
             
-            # Do a full sync every 10 minutes to ensure we have fresh state
-            if time_since_full_sync > 600:  # 10 minutes
-                logger.debug("Performing periodic full sync...")
-                try:
-                    await client.sync(timeout=15000, full_state=True)
-                    last_full_sync = current_time
-                    logger.debug("Periodic full sync successful")
-                except Exception as e:
-                    logger.warning(f"Periodic full sync failed: {e}")
-                    
-            # For Ollama: Send a tiny request every 2 minutes to keep model warm
-            if LLM_PROVIDER == "ollama" and time_since_warm > 120:  # 2 minutes instead of 3
-                logger.debug("Warming up Ollama model...")
+            # Warm Ollama model if needed
+            if LLM_PROVIDER == "ollama" and current_time - last_warm > OLLAMA_WARM_INTERVAL:
                 try:
                     from modules.llm import call_ollama_api
-                    # Send minimal request to keep model loaded in memory
                     warm_messages = [
-                        {"role": "system", "content": "You are a helpful assistant."},
-                        {"role": "user", "content": "Reply with just 'ok'"}
+                        {"role": "user", "content": "hi"}
                     ]
-                    result = await call_ollama_api(warm_messages, temperature=0.1)
-                    if result:
-                        last_model_warm = current_time
-                        logger.debug("Ollama model warmed up successfully")
+                    await call_ollama_api(warm_messages, temperature=0.1)
+                    last_warm = current_time
                 except Exception as e:
-                    logger.debug(f"Ollama warm-up failed (non-critical): {e}")
+                    logger.debug(f"Ollama warm-up failed: {e}")
                     
         except Exception as e:
-            logger.error(f"Connection health monitor error: {e}")
-            # Don't crash the monitor, just continue with shorter sleep
-            await asyncio.sleep(15)
+            logger.error(f"Keepalive error: {e}")
+            await asyncio.sleep(10)
 
 async def run_matrix_bot():
     """Run the Matrix bot"""
@@ -158,12 +118,12 @@ async def run_matrix_bot():
         print("  - MATRIX_PASSWORD")
         return
     
-    # Set up client configuration with better timeout handling
+    # Set up client configuration with optimized settings
     config = AsyncClientConfig(
         max_limit_exceeded=0,
         max_timeouts=0,
         encryption_enabled=False,
-        request_timeout=30,  # 30 second timeout for requests
+        request_timeout=MATRIX_REQUEST_TIMEOUT,
     )
     
     # Create client
@@ -193,7 +153,6 @@ async def run_matrix_bot():
         
         # Create wrapped callbacks that include the client
         async def wrapped_message_callback(room, event):
-            # Pass directly to message_callback which handles everything
             await message_callback(client, room, event)
         
         async def wrapped_invite_callback(room, event):
@@ -203,32 +162,31 @@ async def run_matrix_bot():
         client.add_event_callback(wrapped_message_callback, RoomMessageText)
         client.add_event_callback(wrapped_invite_callback, InviteMemberEvent)
         
-        # Do an initial sync to get the latest state
+        # Do a minimal initial sync
         logger.info("Matrix: Performing initial sync...")
         sync_filter = {
             "room": {
                 "timeline": {
-                    "limit": 1  # Only get the most recent message per room on startup
+                    "limit": 1  # Only get the most recent message per room
                 }
             }
         }
-        sync_response = await client.sync(timeout=30000, full_state=True, sync_filter=sync_filter)
+        sync_response = await client.sync(timeout=MATRIX_SYNC_TIMEOUT, full_state=False, sync_filter=sync_filter)
         logger.info(f"Matrix: Initial sync completed. Next batch: {sync_response.next_batch}")
         
-        # Mark all messages from initial sync as processed to avoid responding to old messages
+        # Mark all messages from initial sync as processed
         if hasattr(sync_response, 'rooms') and hasattr(sync_response.rooms, 'join'):
             for room_id, room_data in sync_response.rooms.join.items():
                 if hasattr(room_data, 'timeline') and hasattr(room_data.timeline, 'events'):
                     for event in room_data.timeline.events:
                         if hasattr(event, 'event_id'):
                             mark_event_processed(event.event_id)
-                            logger.debug(f"Marked initial sync event as processed: {event.event_id}")
         
         # Start cleanup task
         asyncio.create_task(cleanup_old_context())
         
-        # Start connection health monitor
-        asyncio.create_task(maintain_connection_health(client))
+        # Start simple keepalive
+        asyncio.create_task(simple_keepalive(client))
         
         print("=" * 50)
         print(f"🤖 {BOT_USERNAME.capitalize()} Bot - Matrix Integration Active!")
@@ -240,44 +198,31 @@ async def run_matrix_bot():
         print("✅ Auto-accepting room invites")
         print(f"📝 Trigger: Say '{BOT_USERNAME}' anywhere in a message")
         print("💬 Or reply directly to any of my messages")
-        print("❌ Random responses: DISABLED")
-        print("👀 Emoji reactions: ENABLED (various triggers)")
         print(f"🧹 Reset: '{BOT_USERNAME} !reset' to clear context")
-        print(f"📊 Summary: '{BOT_USERNAME} summary' for comprehensive chat analysis")
         print("📚 Help: ?help to see all available commands")
-        print("📈 Stats: ?stats to see bot statistics")
+        print("📊 Stats: ?stats to see bot statistics")
         print("🖥️ System: ?sys to see system resource usage")
         print("🕐 Clock: ?clock <city/country> for world time")
         print("💰 Price: ?price <crypto> [currency] for crypto/fiat prices")
         print("📊 Stocks: ?stonks <ticker> for stock market data")
-        print("⚙️ Settings: ?setting to manage bot configuration (authorized users only)")
+        print("⚙️ Settings: ?setting to manage bot configuration")
         if settings_manager.is_meme_enabled():
             print("🎨 Meme generation: ?meme <topic> to create memes")
+        print("⚡ Performance Mode: Optimized for speed")
+        print(f"💾 Context: Tracking last {MAX_ROOM_HISTORY} messages")
+        print(f"⏱️ Timeouts: {LLM_TIMEOUT}s LLM, {SEARCH_TIMEOUT}s search")
+        print(f"🔄 Sync: {MATRIX_SYNC_TIMEOUT}ms timeout, {MATRIX_KEEPALIVE_INTERVAL}s keepalive")
+        if ENABLE_WEB_SEARCH:
+            print("🔍 Web search: ENABLED")
         else:
-            print("🎨 Meme generation: DISABLED (enable with ?setting meme on)")
-        print("🧠 Optimized Context: Tracking 100 messages (reduced for performance)")
-        print("📈 Context Features: Topic tracking, user expertise, important messages")
-        print("💻 Technical expertise: Programming, Linux, Security, etc.")
-        print("🔗 URL Analysis: Share URLs and I'll read and discuss them!")
-        print("📝 Code Formatting: Proper syntax highlighting for all languages")
-        print("🔍 Web search: Powered by Jina.ai - Smart detection for current info")
-        print("🎯 Personality: Professional, helpful, witty, context-aware")
-        print("⏱️ Timeouts: 30s for LLM, 15s for search, 20s for URL fetching")
-        print("🔄 Retry logic: 3 attempts with exponential backoff")
-        print("🧹 Auto-cleanup: Hourly context cleanup to maintain performance")
-        print("📉 Reduced context: Optimized for faster response times")
-        print("🔁 Duplicate prevention: Won't respond to old messages on restart")
-        print("🔌 Connection keepalive: Active monitoring every 30 seconds")
-        print("🔄 Full sync refresh: Every 10 minutes to maintain fresh state")
-        if LLM_PROVIDER == "ollama":
-            print(f"🔥 Ollama model warming: Every 2 minutes (keep-alive: {OLLAMA_KEEP_ALIVE})")
+            print("🔍 Web search: DISABLED (for faster responses)")
         print("=" * 50)
         
-        # Sync forever with optimized timeout for better responsiveness
+        # Sync forever with optimized settings
         await client.sync_forever(
-            timeout=30000,  # 30 seconds - balanced for responsiveness
-            full_state=False,  # Don't request full state on every sync
-            since=sync_response.next_batch  # Continue from where we left off
+            timeout=MATRIX_SYNC_TIMEOUT,
+            full_state=False,
+            since=sync_response.next_batch
         )
             
     except Exception as e:
@@ -304,249 +249,132 @@ async def send_message(client, room_id: str, content: dict):
 async def handle_help_command(client, room, event):
     """Handle help command for Matrix"""
     try:
-        # Track command usage
         stats_tracker.record_command_usage('?help')
         
-        # Build help message
         help_text = f"""📚 **{BOT_USERNAME.capitalize()} Bot - Available Commands**
 
-**General Commands:**
+**Chat:**
+• `{BOT_USERNAME} <message>` - Chat with me
+• Reply to my messages to continue conversation
+• `{BOT_USERNAME} !reset` - Clear conversation context
+
+**Commands:**
 • `?help` - Show this help message
-• `?stats` - Show bot statistics and enabled features
-• `?sys` - Show system resource usage (CPU, RAM, Disk)
-• `?setting` - Manage bot configuration (authorized users only)
-• `{BOT_USERNAME} <message>` - Chat with me by mentioning my name
-• Reply to any of my messages to continue the conversation
-• `{BOT_USERNAME} !reset` - Clear conversation context for this room
-• `{BOT_USERNAME} summary` - Get a comprehensive analysis of recent chat
-
-**Time & Date:**
-• `?clock <city/country>` - Get current time for a location
-• `?clock` - Get current UTC time
-• Examples: `?clock paris`, `?clock tokyo`, `?clock usa`
-
-**Price & Finance:**
-• `?price <crypto> [currency]` - Get cryptocurrency prices
-• `?price <from_currency> <to_currency>` - Get fiat exchange rates
-• Examples: `?price xmr usd`, `?price btc`, `?price usd aud`
-
-**Stock Market:**
-• `?stonks <ticker>` - Get detailed stock information
-• `?stonks` - Get global market summary
-• Examples: `?stonks AAPL`, `?stonks MSFT`, `?stonks TSLA`
-
-**System Monitoring:**
-• `?sys` - Display current system resource usage
-  Shows CPU load, memory usage, and disk space
-
-**Settings Management (Authorized Users Only):**
-• `?setting help` - Show settings help and available options
-• `?setting list` - Display current settings values
-• `?setting <name> <value>` - Update a setting
-
-**Fun & Utility:**"""
+• `?stats` - Show bot statistics
+• `?sys` - Show system resource usage
+• `?setting` - Manage bot configuration
+• `?clock <city>` - Get current time for a location
+• `?price <crypto>` - Get cryptocurrency prices
+• `?stonks <ticker>` - Get stock information"""
         
         if settings_manager.is_meme_enabled():
-            help_text += "\n• `?meme <topic>` - Generate a meme with AI-generated captions"
+            help_text += "\n• `?meme <topic>` - Generate a meme"
         
-        help_text += f"""
-• `{BOT_USERNAME} search <query>` - Search the web for current information
+        help_text += "\n\nNeed help? Just ask me anything!"
 
-**Features:**
-• 🔗 **URL Analysis** - Share any URL and I'll read and discuss it
-• 📝 **Code Support** - I can help with programming questions and format code properly
-• 👀 **Smart Reactions** - I'll react with emojis to certain keywords
-• 🧠 **Context Aware** - I remember the last 100 messages in each room
-• 🔍 **Auto Search** - I'll automatically search for current events when needed
-• 📊 **Stock Market** - Real-time stock prices and market data
-• 🕐 **World Clock** - Get time for any city or country
-• 🖥️ **System Monitor** - Check server resource usage
-• ⚙️ **Live Settings** - Authorized users can update settings without restart
-
-**Tips:**
-• I'm particularly knowledgeable about programming, Linux, security, and privacy
-• I can analyze technical documentation and help with coding problems
-• Share URLs to articles or documentation for me to analyze
-• I maintain conversation context and can reference earlier messages
-
-Need more help? Just ask me anything!"""
-
-        # Send help message with formatting
         await send_message(
             client,
             room.room_id,
             {
                 "msgtype": "m.text",
-                "body": help_text.replace("**", "").replace("•", "-"),  # Plain text fallback
+                "body": help_text.replace("**", ""),
                 "format": "org.matrix.custom.html",
                 "formatted_body": help_text.replace("**", "<strong>").replace("**", "</strong>")
-                                           .replace("•", "•")
                                            .replace("\n", "<br/>")
             }
         )
         
     except Exception as e:
         logger.error(f"Error handling help command: {e}")
-        await send_message(
-            client,
-            room.room_id,
-            {
-                "msgtype": "m.text",
-                "body": "Sorry, I couldn't display the help message. Please try again."
-            }
-        )
 
 async def handle_clock_command(client, room, event):
     """Handle world clock command for Matrix"""
     try:
-        # Track command usage
         stats_tracker.record_command_usage('?clock')
-        stats_tracker.record_feature_usage('world_clock')
         
-        # Send typing indicator
-        await client.room_typing(room.room_id, typing_state=True)
-        
-        # Parse the command
         parts = event.body.strip().split(maxsplit=1)
         location = parts[1] if len(parts) > 1 else ""
         
-        # Get time for location
         response = await world_clock.handle_clock_command(location)
         
-        # Send the response with formatting
         await send_message(
             client,
             room.room_id,
             {
                 "msgtype": "m.text",
-                "body": response.replace("**", "").replace("•", "-"),  # Plain text fallback
+                "body": response.replace("**", ""),
                 "format": "org.matrix.custom.html",
                 "formatted_body": response.replace("**", "<strong>").replace("**", "</strong>")
-                                         .replace("•", "•")
                                          .replace("\n", "<br/>")
             }
         )
         
-        # Track sent message
         stats_tracker.record_message_sent(room.room_id)
         
     except Exception as e:
         logger.error(f"Error handling clock command: {e}")
-        await send_message(
-            client,
-            room.room_id,
-            {
-                "msgtype": "m.text",
-                "body": "Sorry, I couldn't get the time for that location. Please try again."
-            }
-        )
-    finally:
-        await client.room_typing(room.room_id, typing_state=False)
 
 async def handle_price_command(client, room, event):
     """Handle price command for Matrix"""
     try:
-        # Check if price tracking is enabled using environment variable directly
         if not ENABLE_PRICE_TRACKING:
             await send_message(
                 client,
                 room.room_id,
                 {
                     "msgtype": "m.text",
-                    "body": "Price tracking feature is not enabled. Please set ENABLE_PRICE_TRACKING=true in your .env file and restart the bot."
+                    "body": "Price tracking is disabled."
                 }
             )
             return
         
-        # Track command usage
         stats_tracker.record_command_usage('?price')
-        stats_tracker.record_feature_usage('price_tracking')
         
-        # Send typing indicator
-        await client.room_typing(room.room_id, typing_state=True)
-        
-        # Parse the command - remove the ?price prefix
         parts = event.body.strip().split(maxsplit=1)
-        query = parts[1] if len(parts) > 1 else "XMR"  # Default to XMR if no argument
+        query = parts[1] if len(parts) > 1 else "XMR"
         
-        # Get price response
         response = await price_tracker.get_price_response(query)
         
         if not response:
-            # If the price tracker couldn't parse it, provide help
-            response = """💰 **Price Command Usage**
-
-**Cryptocurrency prices:**
-• `?price btc` - Bitcoin in USD
-• `?price xmr usd` - Monero in USD
-• `?price eth eur` - Ethereum in EUR
-
-**Fiat exchange rates:**
-• `?price usd eur` - USD to EUR rate
-• `?price 100 usd eur` - Convert 100 USD to EUR
-
-**Supported cryptos:** BTC, ETH, XMR, LTC, DOGE, ADA, DOT, LINK, UNI, SOL, MATIC, AVAX, ATOM, XRP, BNB and more
-
-**Supported fiats:** USD, EUR, GBP, JPY, CNY, INR, KRW, RUB, CAD, AUD, CHF, SEK, NOK, DKK, PLN, CZK, NZD, MXN, BRL, ZAR, HKD, SGD, THB, TRY and more"""
+            response = "Usage: ?price btc [usd]"
         
-        # Send the response with formatting
         await send_message(
             client,
             room.room_id,
             {
                 "msgtype": "m.text",
-                "body": response.replace("**", "").replace("•", "-"),  # Plain text fallback
+                "body": response.replace("**", ""),
                 "format": "org.matrix.custom.html",
                 "formatted_body": response.replace("**", "<strong>").replace("**", "</strong>")
-                                         .replace("•", "•")
                                          .replace("\n", "<br/>")
             }
         )
         
-        # Track sent message
         stats_tracker.record_message_sent(room.room_id)
         
     except Exception as e:
         logger.error(f"Error handling price command: {e}")
-        await send_message(
-            client,
-            room.room_id,
-            {
-                "msgtype": "m.text",
-                "body": "Sorry, I couldn't fetch price data right now. Please try again later."
-            }
-        )
-    finally:
-        await client.room_typing(room.room_id, typing_state=False)
 
 async def handle_meme_command(client, room, event):
     """Handle meme generation command for Matrix"""
     try:
-        # Check if meme generation is enabled at runtime
         if not settings_manager.is_meme_enabled():
             await send_message(
                 client,
                 room.room_id,
                 {
                     "msgtype": "m.text",
-                    "body": "Meme generation feature is not enabled. An authorized user can enable it with: ?setting meme on"
+                    "body": "Meme generation is disabled."
                 }
             )
             return
         
-        # Track command usage
         stats_tracker.record_command_usage('?meme')
-        stats_tracker.record_feature_usage('meme_generation')
         
-        # Send typing indicator
-        await client.room_typing(room.room_id, typing_state=True)
-        
-        # Generate meme - change the command prefix from ! to ?
         meme_input = event.body.replace('?meme', '!meme', 1)
         meme_url, caption = await meme_generator.handle_meme_command(meme_input)
         
         if meme_url:
-            # Send the message with both caption and URL
             formatted_body = f"{caption}\n{meme_url}"
             
             await send_message(
@@ -560,10 +388,8 @@ async def handle_meme_command(client, room, event):
                 }
             )
             
-            # Track sent message
             stats_tracker.record_message_sent(room.room_id)
         else:
-            # Send error message
             await send_message(
                 client,
                 room.room_id,
@@ -575,190 +401,109 @@ async def handle_meme_command(client, room, event):
             
     except Exception as e:
         logger.error(f"Error handling meme command: {e}")
-        await send_message(
-            client,
-            room.room_id,
-            {
-                "msgtype": "m.text",
-                "body": "Sorry, I couldn't create a meme right now. Please try again later."
-            }
-        )
-    finally:
-        await client.room_typing(room.room_id, typing_state=False)
 
 async def handle_stonks_command(client, room, event):
     """Handle stock market command for Matrix"""
     try:
-        # Check if stock tracking is enabled using environment variable directly
         if not ENABLE_STOCK_MARKET:
             await send_message(
                 client,
                 room.room_id,
                 {
                     "msgtype": "m.text",
-                    "body": "Stock tracking feature is not enabled. Please set ENABLE_STOCK_MARKET=true in your .env file and restart the bot."
+                    "body": "Stock tracking is disabled."
                 }
             )
             return
         
-        # Track command usage
         stats_tracker.record_command_usage('?stonks')
-        stats_tracker.record_feature_usage('stock_tracking')
         
-        # Send typing indicator
-        await client.room_typing(room.room_id, typing_state=True)
-        
-        # Parse the command
         parts = event.body.strip().split()
         
         if len(parts) == 1:
-            # No ticker provided, show market summary
             response = await stock_tracker.get_market_summary()
         else:
-            # Get stock info for the provided ticker
             ticker = parts[1]
             response = await stock_tracker.get_stock_info(ticker)
         
-        # Send the response with formatting
         await send_message(
             client,
             room.room_id,
             {
                 "msgtype": "m.text",
-                "body": response.replace("**", "").replace("•", "-"),  # Plain text fallback
+                "body": response.replace("**", ""),
                 "format": "org.matrix.custom.html",
                 "formatted_body": response.replace("**", "<strong>").replace("**", "</strong>")
-                                         .replace("•", "•")
                                          .replace("\n", "<br/>")
-                                         .replace("_", "<em>").replace("_", "</em>")
             }
         )
         
-        # Track sent message
         stats_tracker.record_message_sent(room.room_id)
         
     except Exception as e:
         logger.error(f"Error handling stonks command: {e}")
-        await send_message(
-            client,
-            room.room_id,
-            {
-                "msgtype": "m.text",
-                "body": "Sorry, I couldn't fetch stock data right now. Please try again later."
-            }
-        )
-    finally:
-        await client.room_typing(room.room_id, typing_state=False)
 
 async def handle_setting_command(client, room, event):
     """Handle setting command for Matrix"""
     try:
-        # Track command usage
         stats_tracker.record_command_usage('?setting')
-        stats_tracker.record_feature_usage('settings_management')
         
-        # Send typing indicator
-        await client.room_typing(room.room_id, typing_state=True)
-        
-        # Parse the command
         parts = event.body.strip().split(maxsplit=1)
         args = parts[1].split() if len(parts) > 1 else []
         
-        # Get the user ID
         user_id = event.sender
         
-        # Handle the setting command
         response = await settings_manager.handle_setting_command(args, user_id, 'matrix')
         
-        # Send the response with formatting
         await send_message(
             client,
             room.room_id,
             {
                 "msgtype": "m.text",
-                "body": response.replace("**", "").replace("•", "-"),  # Plain text fallback
+                "body": response.replace("**", ""),
                 "format": "org.matrix.custom.html",
                 "formatted_body": response.replace("**", "<strong>").replace("**", "</strong>")
-                                         .replace("•", "•")
                                          .replace("\n", "<br/>")
-                                         .replace("`", "<code>").replace("`", "</code>")
             }
         )
         
-        # Track sent message
         stats_tracker.record_message_sent(room.room_id)
         
     except Exception as e:
         logger.error(f"Error handling setting command: {e}")
-        await send_message(
-            client,
-            room.room_id,
-            {
-                "msgtype": "m.text",
-                "body": "Sorry, I couldn't process the setting command. Please try again."
-            }
-        )
-    finally:
-        await client.room_typing(room.room_id, typing_state=False)
 
 async def handle_sys_command(client, room, event):
     """Handle system resource monitor command for Matrix"""
     try:
-        # Track command usage
         stats_tracker.record_command_usage('?sys')
-        stats_tracker.record_feature_usage('system_monitor')
         
-        # Send typing indicator
-        await client.room_typing(room.room_id, typing_state=True)
-        
-        # Get system information
         response = system_monitor.get_system_info()
         
-        # Send the response with formatting
         await send_message(
             client,
             room.room_id,
             {
                 "msgtype": "m.text",
-                "body": response.replace("**", "").replace("•", "-"),  # Plain text fallback
+                "body": response.replace("**", ""),
                 "format": "org.matrix.custom.html",
                 "formatted_body": response.replace("**", "<strong>").replace("**", "</strong>")
-                                         .replace("•", "•")
                                          .replace("\n", "<br/>")
             }
         )
         
-        # Track sent message
         stats_tracker.record_message_sent(room.room_id)
         
     except Exception as e:
         logger.error(f"Error handling sys command: {e}")
-        await send_message(
-            client,
-            room.room_id,
-            {
-                "msgtype": "m.text",
-                "body": "Sorry, I couldn't retrieve system information. Please ensure psutil is installed and try again."
-            }
-        )
-    finally:
-        await client.room_typing(room.room_id, typing_state=False)
 
 async def handle_stats_command(client, room, event):
     """Handle stats command for Matrix"""
     try:
-        # Track command usage
         stats_tracker.record_command_usage('?stats')
         
-        # Get statistics
         uptime = stats_tracker.get_uptime()
         daily_stats = stats_tracker.get_daily_stats()
-        hourly_dist = stats_tracker.get_hourly_distribution()
-        active_rooms = stats_tracker.get_most_active_rooms(3)
-        command_stats = stats_tracker.get_command_stats()
-        feature_stats = stats_tracker.get_feature_stats()
         
-        # Build stats message
         stats_text = f"""📊 **{BOT_USERNAME.capitalize()} Bot Statistics**
 
 **🕐 Uptime:** {uptime}
@@ -768,131 +513,25 @@ async def handle_stats_command(client, room, event):
 • Messages Sent: {daily_stats['messages_sent']}
 • Active Rooms: {daily_stats['active_rooms']}/{daily_stats['total_rooms']}
 
-**🏠 Room Participation:**
-• Total Rooms: {len(stats_tracker.active_rooms)}
-• Total Messages Processed: {stats_tracker.total_messages_processed}
-• Total Messages Sent: {stats_tracker.total_messages_sent}"""
+**🔌 Configuration:**
+• LLM Provider: {LLM_PROVIDER.upper()}
+• Context Size: {MAX_ROOM_HISTORY} messages
+• Web Search: {'Enabled' if ENABLE_WEB_SEARCH else 'Disabled'}
+• Price Tracking: {'Enabled' if ENABLE_PRICE_TRACKING else 'Disabled'}"""
 
-        if active_rooms:
-            stats_text += "\n\n**🔥 Most Active Rooms:**"
-            for i, (room_id, count) in enumerate(active_rooms, 1):
-                # Truncate room ID for display
-                display_id = room_id[:30] + "..." if len(room_id) > 30 else room_id
-                stats_text += f"\n{i}. {display_id}: {count} messages"
-
-        if hourly_dist:
-            stats_text += "\n\n**⏰ Peak Activity Hours (UTC):**"
-            for hour, count in hourly_dist[:3]:
-                stats_text += f"\n• {hour:02d}:00 - {count} messages"
-
-        if command_stats:
-            stats_text += "\n\n**🎮 Command Usage:**"
-            for cmd, count in sorted(command_stats.items(), key=lambda x: x[1], reverse=True)[:5]:
-                stats_text += f"\n• {cmd}: {count} times"
-
-        if feature_stats:
-            stats_text += "\n\n**✨ Feature Usage:**"
-            for feature, count in sorted(feature_stats.items(), key=lambda x: x[1], reverse=True):
-                feature_name = feature.replace('_', ' ').title()
-                stats_text += f"\n• {feature_name}: {count} times"
-
-        # Add enabled integrations
-        stats_text += "\n\n**🔌 Enabled Integrations:**"
-        integrations_list = []
-        
-        # Check which integrations are enabled
-        if INTEGRATIONS.get('matrix', False):
-            integrations_list.append("✅ Matrix")
-        if INTEGRATIONS.get('discord', False):
-            integrations_list.append("✅ Discord")
-        if INTEGRATIONS.get('telegram', False):
-            integrations_list.append("✅ Telegram")
-        if INTEGRATIONS.get('whatsapp', False):
-            integrations_list.append("✅ WhatsApp")
-        if INTEGRATIONS.get('messenger', False):
-            integrations_list.append("✅ Messenger")
-        if INTEGRATIONS.get('instagram', False):
-            integrations_list.append("✅ Instagram")
-        
-        for integration in integrations_list:
-            stats_text += f"\n• {integration}"
-
-        # Add enabled features
-        stats_text += "\n\n**🎯 Enabled Features:**"
-        features_list = []
-        
-        if ENABLE_PRICE_TRACKING:
-            features_list.append("✅ Price Tracking")
-        else:
-            features_list.append("❌ Price Tracking (disabled)")
-        if settings_manager.is_meme_enabled():
-            features_list.append("✅ Meme Generation")
-        else:
-            features_list.append("❌ Meme Generation (disabled)")
-        if ENABLE_STOCK_MARKET:
-            features_list.append("✅ Stock Market Data")
-        else:
-            features_list.append("❌ Stock Market Data (disabled)")
-        features_list.append("✅ World Clock")
-        features_list.append("✅ System Monitor")
-        features_list.append("✅ URL Analysis")
-        if settings_manager.is_web_search_enabled():
-            features_list.append("✅ Web Search")
-        else:
-            features_list.append("❌ Web Search (disabled)")
-        features_list.append("✅ Code Formatting")
-        features_list.append("✅ Emoji Reactions")
-        features_list.append("✅ Settings Management")
-        
-        for feature in features_list:
-            stats_text += f"\n• {feature}"
-
-        # Add LLM configuration
-        stats_text += "\n\n**🧠 LLM Configuration:**"
-        stats_text += f"\n• Provider: {LLM_PROVIDER.upper()}"
-        if LLM_PROVIDER == "openrouter":
-            model_name = OPENROUTER_MODEL.split('/')[-1] if '/' in OPENROUTER_MODEL else OPENROUTER_MODEL
-            stats_text += f"\n• Model: {model_name}"
-        elif LLM_PROVIDER == "ollama":
-            stats_text += f"\n• Model: {OLLAMA_MODEL}"
-            stats_text += f"\n• Keep-alive: {OLLAMA_KEEP_ALIVE}"
-        
-        # Add context configuration
-        stats_text += f"\n\n**💾 Context Configuration:**"
-        stats_text += f"\n• Room History: {MAX_ROOM_HISTORY} messages"
-        stats_text += f"\n• Context Lookback: {MAX_CONTEXT_LOOKBACK} messages"
-        
-        # Add connection health status
-        stats_text += f"\n\n**🔌 Connection Health:**"
-        stats_text += f"\n• Keep-alive: Active (30-second intervals)"
-        stats_text += f"\n• Full sync refresh: Every 10 minutes"
-        if LLM_PROVIDER == "ollama":
-            stats_text += f"\n• Model warming: Active (2-minute intervals)"
-
-        # Send stats message with formatting
         await send_message(
             client,
             room.room_id,
             {
                 "msgtype": "m.text",
-                "body": stats_text.replace("**", "").replace("•", "-"),  # Plain text fallback
+                "body": stats_text.replace("**", ""),
                 "format": "org.matrix.custom.html",
                 "formatted_body": stats_text.replace("**", "<strong>").replace("**", "</strong>")
-                                           .replace("•", "•")
                                            .replace("\n", "<br/>")
             }
         )
         
-        # Track sent message
         stats_tracker.record_message_sent(room.room_id)
         
     except Exception as e:
         logger.error(f"Error handling stats command: {e}")
-        await send_message(
-            client,
-            room.room_id,
-            {
-                "msgtype": "m.text",
-                "body": "Sorry, I couldn't display the statistics. Please try again."
-            }
-        )
