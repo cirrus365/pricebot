@@ -7,7 +7,7 @@ from typing import Optional
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 from telegram.constants import ParseMode, ChatAction
-from config.settings import TELEGRAM_BOT_TOKEN, TELEGRAM_ALLOWED_USERS, TELEGRAM_ALLOWED_GROUPS, BOT_USERNAME, ENABLE_MEME_GENERATION, ENABLE_PRICE_TRACKING
+from config.settings import TELEGRAM_BOT_TOKEN, TELEGRAM_ALLOWED_USERS, TELEGRAM_ALLOWED_GROUPS, BOT_USERNAME, ENABLE_MEME_GENERATION, ENABLE_PRICE_TRACKING, ENABLE_STOCK_MARKET
 from config.personality import BOT_PERSONALITY
 from modules.llm import get_llm_reply
 from modules.price_tracker import price_tracker
@@ -195,9 +195,9 @@ class TelegramBot:
             await update.message.reply_text("❌ Sorry, you're not authorized to use this bot.")
             return
         
-        # Check if stock tracking is enabled
-        if not settings_manager.get_setting_value('stock_tracking'):
-            await update.message.reply_text("Stock tracking feature is not enabled. An authorized user can enable it with: /setting stock_tracking on")
+        # Check if stock tracking is enabled using environment variable directly
+        if not ENABLE_STOCK_MARKET:
+            await update.message.reply_text("Stock tracking feature is not enabled. Please set ENABLE_STOCK_MARKET=true in your .env file and restart the bot.")
             return
             
         # Send typing indicator
@@ -270,9 +270,9 @@ class TelegramBot:
             await update.message.reply_text("❌ Sorry, you're not authorized to use this bot.")
             return
         
-        # Check if price tracking is enabled
-        if not settings_manager.get_setting_value('price_tracking'):
-            await update.message.reply_text("Price tracking feature is not enabled. An authorized user can enable it with: /setting price_tracking on")
+        # Check if price tracking is enabled using environment variable directly
+        if not ENABLE_PRICE_TRACKING:
+            await update.message.reply_text("Price tracking feature is not enabled. Please set ENABLE_PRICE_TRACKING=true in your .env file and restart the bot.")
             return
             
         # Send typing indicator
@@ -289,9 +289,9 @@ class TelegramBot:
             
     async def xmr_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /xmr command - quick Monero price check"""
-        # Check if price tracking is enabled
-        if not settings_manager.get_setting_value('price_tracking'):
-            await update.message.reply_text("Price tracking feature is not enabled. An authorized user can enable it with: /setting price_tracking on")
+        # Check if price tracking is enabled using environment variable directly
+        if not ENABLE_PRICE_TRACKING:
+            await update.message.reply_text("Price tracking feature is not enabled. Please set ENABLE_PRICE_TRACKING=true in your .env file and restart the bot.")
             return
         
         context.args = ["XMR"]
@@ -344,8 +344,8 @@ class TelegramBot:
             f"*Features:*\n"
             f"• Meme Generation: {'✅ Enabled' if settings_manager.is_meme_enabled() else '❌ Disabled'}\n"
             f"• Web Search: {'✅ Enabled' if settings_manager.is_web_search_enabled() else '❌ Disabled'}\n"
-            f"• Price Tracking: {'✅ Enabled' if settings_manager.get_setting_value('price_tracking') else '❌ Disabled'}\n"
-            f"• Stock Tracking: {'✅ Enabled' if settings_manager.get_setting_value('stock_tracking') else '❌ Disabled'}\n"
+            f"• Price Tracking: {'✅ Enabled' if ENABLE_PRICE_TRACKING else '❌ Disabled'}\n"
+            f"• Stock Tracking: {'✅ Enabled' if ENABLE_STOCK_MARKET else '❌ Disabled'}\n"
             f"• Auto-Invite: {'✅ Enabled' if settings_manager.is_auto_invite_enabled() else '❌ Disabled'}\n\n"
             f"*LLM Settings:*\n"
             f"• Main Model: {settings_manager.get_setting_value('main_llm')}\n"

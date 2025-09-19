@@ -6,7 +6,7 @@ from discord.ext import commands
 import asyncio
 from typing import Optional
 import logging
-from config.settings import DISCORD_TOKEN, DISCORD_COMMAND_PREFIX, DISCORD_ALLOWED_GUILDS, BOT_USERNAME, ENABLE_MEME_GENERATION, ENABLE_PRICE_TRACKING
+from config.settings import DISCORD_TOKEN, DISCORD_COMMAND_PREFIX, DISCORD_ALLOWED_GUILDS, BOT_USERNAME, ENABLE_MEME_GENERATION, ENABLE_PRICE_TRACKING, ENABLE_STOCK_MARKET
 from config.personality import BOT_PERSONALITY
 from modules.llm import get_llm_reply
 from modules.price_tracker import price_tracker
@@ -275,9 +275,9 @@ class ChatbotCommands(commands.Cog):
     @commands.command(name='stonks', help='Get stock market information')
     async def stonks_command(self, ctx, *, ticker: str = None):
         """Get stock market data"""
-        # Check if stock tracking is enabled
-        if not settings_manager.get_setting_value('stock_tracking'):
-            await ctx.send("Stock tracking feature is not enabled. An authorized user can enable it with: `?setting stock_tracking on`")
+        # Check if stock tracking is enabled using environment variable directly
+        if not ENABLE_STOCK_MARKET:
+            await ctx.send("Stock tracking feature is not enabled. Please set ENABLE_STOCK_MARKET=true in your .env file and restart the bot.")
             return
         
         async with ctx.typing():
@@ -328,9 +328,9 @@ class ChatbotCommands(commands.Cog):
     @commands.command(name='price', help='Get cryptocurrency prices or exchange rates')
     async def price_command(self, ctx, *, query: str = "XMR"):
         """Get cryptocurrency price or exchange rate"""
-        # Check if price tracking is enabled
-        if not settings_manager.get_setting_value('price_tracking'):
-            await ctx.send("Price tracking feature is not enabled. An authorized user can enable it with: `?setting price_tracking on`")
+        # Check if price tracking is enabled using environment variable directly
+        if not ENABLE_PRICE_TRACKING:
+            await ctx.send("Price tracking feature is not enabled. Please set ENABLE_PRICE_TRACKING=true in your .env file and restart the bot.")
             return
         
         async with ctx.typing():
@@ -348,9 +348,9 @@ class ChatbotCommands(commands.Cog):
     @commands.command(name='xmr', help='Get Monero price')
     async def xmr_command(self, ctx):
         """Quick command for Monero price"""
-        # Check if price tracking is enabled
-        if not settings_manager.get_setting_value('price_tracking'):
-            await ctx.send("Price tracking feature is not enabled. An authorized user can enable it with: `?setting price_tracking on`")
+        # Check if price tracking is enabled using environment variable directly
+        if not ENABLE_PRICE_TRACKING:
+            await ctx.send("Price tracking feature is not enabled. Please set ENABLE_PRICE_TRACKING=true in your .env file and restart the bot.")
             return
         
         await self.price_command(ctx, query="XMR")
@@ -402,13 +402,13 @@ class ChatbotCommands(commands.Cog):
         
         embed.add_field(
             name="Price Tracking",
-            value="✅ Enabled" if settings_manager.get_setting_value('price_tracking') else "❌ Disabled",
+            value="✅ Enabled" if ENABLE_PRICE_TRACKING else "❌ Disabled",
             inline=True
         )
         
         embed.add_field(
             name="Stock Tracking",
-            value="✅ Enabled" if settings_manager.get_setting_value('stock_tracking') else "❌ Disabled",
+            value="✅ Enabled" if ENABLE_STOCK_MARKET else "❌ Disabled",
             inline=True
         )
         

@@ -17,7 +17,7 @@ from nio import (
 )
 from config.settings import (
     HOMESERVER, USERNAME, PASSWORD, BOT_USERNAME, ENABLE_MEME_GENERATION,
-    ENABLE_PRICE_TRACKING, INTEGRATIONS, LLM_PROVIDER, OPENROUTER_MODEL,
+    ENABLE_PRICE_TRACKING, ENABLE_STOCK_MARKET, INTEGRATIONS, LLM_PROVIDER, OPENROUTER_MODEL,
     OLLAMA_MODEL, MAX_ROOM_HISTORY, MAX_CONTEXT_LOOKBACK
 )
 
@@ -384,14 +384,14 @@ async def handle_clock_command(client, room, event):
 async def handle_price_command(client, room, event):
     """Handle price command for Matrix"""
     try:
-        # Check if price tracking is enabled
-        if not settings_manager.get_setting_value('price_tracking'):
+        # Check if price tracking is enabled using environment variable directly
+        if not ENABLE_PRICE_TRACKING:
             await send_message(
                 client,
                 room.room_id,
                 {
                     "msgtype": "m.text",
-                    "body": "Price tracking feature is not enabled. An authorized user can enable it with: ?setting price_tracking on"
+                    "body": "Price tracking feature is not enabled. Please set ENABLE_PRICE_TRACKING=true in your .env file and restart the bot."
                 }
             )
             return
@@ -527,14 +527,14 @@ async def handle_meme_command(client, room, event):
 async def handle_stonks_command(client, room, event):
     """Handle stock market command for Matrix"""
     try:
-        # Check if stock tracking is enabled
-        if not settings_manager.get_setting_value('stock_tracking'):
+        # Check if stock tracking is enabled using environment variable directly
+        if not ENABLE_STOCK_MARKET:
             await send_message(
                 client,
                 room.room_id,
                 {
                     "msgtype": "m.text",
-                    "body": "Stock tracking feature is not enabled. An authorized user can enable it with: ?setting stock_tracking on"
+                    "body": "Stock tracking feature is not enabled. Please set ENABLE_STOCK_MARKET=true in your .env file and restart the bot."
                 }
             )
             return
@@ -716,7 +716,7 @@ async def handle_stats_command(client, room, event):
         stats_text += "\n\n**🎯 Enabled Features:**"
         features_list = []
         
-        if settings_manager.get_setting_value('price_tracking'):
+        if ENABLE_PRICE_TRACKING:
             features_list.append("✅ Price Tracking")
         else:
             features_list.append("❌ Price Tracking (disabled)")
@@ -724,7 +724,7 @@ async def handle_stats_command(client, room, event):
             features_list.append("✅ Meme Generation")
         else:
             features_list.append("❌ Meme Generation (disabled)")
-        if settings_manager.get_setting_value('stock_tracking'):
+        if ENABLE_STOCK_MARKET:
             features_list.append("✅ Stock Market Data")
         else:
             features_list.append("❌ Stock Market Data (disabled)")
