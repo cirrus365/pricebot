@@ -15,6 +15,7 @@ from modules.web_search import search_with_jina, fetch_url_content
 from modules.meme_generator import meme_generator
 from modules.world_clock import world_clock
 from modules.settings_manager import settings_manager
+from modules.context import room_message_history, conversation_context
 from utils.formatting import format_code_blocks
 from utils.helpers import extract_urls_from_message, detect_code_in_message
 
@@ -77,8 +78,11 @@ class ChatbotDiscordBot(commands.Bot):
             if str(message.guild.id) not in DISCORD_ALLOWED_GUILDS:
                 return
                 
-        # Store message in history
+        # Store message in both local and shared history
         channel_id = message.channel.id
+        room_id = f"discord_{channel_id}"  # Create consistent room_id for shared context
+        
+        # Local history (for backward compatibility)
         if channel_id not in self.conversation_history:
             self.conversation_history[channel_id] = []
             
@@ -88,7 +92,23 @@ class ChatbotDiscordBot(commands.Bot):
             'timestamp': message.created_at
         })
         
-        # Trim history
+        # Shared history for context system
+        message_data = {
+            'sender': f"discord_{message.author.id}",
+            'body': message.content,
+            'timestamp': message.created_at.timestamp()
+        }
+        
+        # Store in shared room_message_history
+        room_message_history[room_id].append(message_data)
+        
+        # Update conversation context with topic tracking and user interests
+        conversation_context.update_context(room_id, message_data)
+        
+        # Log for debugging
+        logger.debug(f"Stored message in room {room_id}, history size: {len(room_message_history[room_id])}")
+        
+        # Trim local history
         if len(self.conversation_history[channel_id]) > self.max_history:
             self.conversation_history[channel_id] = self.conversation_history[channel_id][-self.max_history:]
             
@@ -109,8 +129,11 @@ class ChatbotDiscordBot(commands.Bot):
                 await message.reply("Hey! What's up? Ask me something!")
                 return
                 
-            # Get conversation context
-            context = self.get_conversation_context(message.channel.id)
+            # Create room_id for context system
+            room_id = f"discord_{message.channel.id}"
+            
+            # Log context retrieval
+            logger.debug(f"Getting context for room {room_id}, messages available: {len(room_message_history[room_id])}")
             
             # Check for URLs in message
             urls = extract_urls_from_message(content)
@@ -122,18 +145,22 @@ class ChatbotDiscordBot(commands.Bot):
                     if url_content:
                         url_contents.append(url_content)
                         
-            # Check if web search is needed
-            if any(keyword in content.lower() for keyword in ['search', 'find', 'look up', 'what is', 'who is']):
+            # Check if web search is needed (only if enabled)
+            if settings_manager.is_web_search_enabled() and any(keyword in content.lower() for keyword in ['search', 'find', 'look up', 'what is', 'who is']):
                 search_results = await search_with_jina(content, num_results=3)
                 if search_results:
-                    context += f"\n\nSearch results:\n{search_results}"
+                    # Don't pass search results as context, let LLM handle it
+                    pass
                     
-            # Get LLM response
+            # Get LLM response with proper room_id for context
             try:
                 response = await get_llm_reply(
                     prompt=content,
-                    context=context,
-                    url_contents=url_contents
+                    context=None,  # Let LLM use room_id for context
+                    previous_message=None,
+                    room_id=room_id,  # Pass room_id for proper context handling
+                    url_contents=url_contents,
+                    client=None  # Discord doesn't need client object
                 )
                 
                 # Format response
@@ -153,7 +180,7 @@ class ChatbotDiscordBot(commands.Bot):
                 await message.reply("Oops! Something went wrong. Try again later!")
                 
     def get_conversation_context(self, channel_id):
-        """Get conversation context for a channel"""
+        """Get conversation context for a channel (legacy method, kept for compatibility)"""
         if channel_id not in self.conversation_history:
             return ""
             
@@ -447,6 +474,7 @@ async def run_discord_bot():
         print("🎨 Meme generation: DISABLED (enable with ?setting meme on)")
     print("🔍 Web search: Ask to search for anything")
     print("📊 Stats: ?stats for bot statistics")
+    print("🧠 Context: Full conversation context with topic tracking enabled")
     print("=" * 50)
     
     try:

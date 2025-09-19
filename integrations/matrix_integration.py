@@ -18,7 +18,7 @@ from nio import (
 from config.settings import (
     HOMESERVER, USERNAME, PASSWORD, BOT_USERNAME, ENABLE_MEME_GENERATION,
     ENABLE_PRICE_TRACKING, ENABLE_STOCK_MARKET, INTEGRATIONS, LLM_PROVIDER, OPENROUTER_MODEL,
-    OLLAMA_MODEL, MAX_ROOM_HISTORY, MAX_CONTEXT_LOOKBACK
+    OLLAMA_MODEL, MAX_ROOM_HISTORY, MAX_CONTEXT_LOOKBACK, OLLAMA_KEEP_ALIVE
 )
 
 logger = logging.getLogger(__name__)
@@ -63,6 +63,57 @@ def initialize_handlers():
     world_clock = wc
     price_tracker = pt
     settings_manager = sm
+
+async def maintain_connection_health(client):
+    """Maintain connection health and preload models"""
+    last_activity = time.time()
+    last_model_warm = time.time()
+    
+    while True:
+        try:
+            await asyncio.sleep(120)  # Check every 2 minutes
+            current_time = time.time()
+            time_since_activity = current_time - last_activity
+            time_since_warm = current_time - last_model_warm
+            
+            # If no activity for 4 minutes, do a lightweight sync to keep connection alive
+            if time_since_activity > 240:
+                logger.debug("Performing keep-alive sync...")
+                try:
+                    sync_response = await client.sync(timeout=5000, full_state=False)
+                    if sync_response:
+                        last_activity = current_time
+                        logger.debug("Keep-alive sync successful")
+                except Exception as e:
+                    logger.warning(f"Keep-alive sync failed: {e}")
+                    # Try to recover connection
+                    try:
+                        await client.sync(timeout=10000, full_state=False)
+                        last_activity = current_time
+                    except:
+                        logger.error("Failed to recover connection")
+                    
+            # For Ollama: Send a tiny request every 3 minutes to keep model warm
+            if LLM_PROVIDER == "ollama" and time_since_warm > 180:  # 3 minutes
+                logger.debug("Warming up Ollama model...")
+                try:
+                    from modules.llm import call_ollama_api
+                    # Send minimal request to keep model loaded in memory
+                    warm_messages = [
+                        {"role": "system", "content": "You are a helpful assistant."},
+                        {"role": "user", "content": "Reply with just 'ok'"}
+                    ]
+                    result = await call_ollama_api(warm_messages, temperature=0.1)
+                    if result:
+                        last_model_warm = current_time
+                        logger.debug("Ollama model warmed up successfully")
+                except Exception as e:
+                    logger.debug(f"Ollama warm-up failed (non-critical): {e}")
+                    
+        except Exception as e:
+            logger.error(f"Connection health monitor error: {e}")
+            # Don't crash the monitor, just continue
+            await asyncio.sleep(60)
 
 async def process_message(client, room, event):
     """Process a message"""
@@ -198,6 +249,9 @@ async def run_matrix_bot():
         # Start cleanup task
         asyncio.create_task(cleanup_old_context())
         
+        # Start connection health monitor
+        asyncio.create_task(maintain_connection_health(client))
+        
         print("=" * 50)
         print(f"🤖 {BOT_USERNAME.capitalize()} Bot - Matrix Integration Active!")
         print("=" * 50)
@@ -234,10 +288,16 @@ async def run_matrix_bot():
         print("🧹 Auto-cleanup: Hourly context cleanup to maintain performance")
         print("📉 Reduced context: Optimized for faster response times")
         print("🔁 Duplicate prevention: Won't respond to old messages on restart")
+        print("🔌 Connection keepalive: Active monitoring to prevent timeouts")
+        if LLM_PROVIDER == "ollama":
+            print(f"🔥 Ollama model warming: Every 3 minutes (keep-alive: {OLLAMA_KEEP_ALIVE})")
         print("=" * 50)
         
-        # Sync forever
-        await client.sync_forever(timeout=30000, full_state=True)
+        # Sync forever with longer timeout for better stability
+        await client.sync_forever(
+            timeout=60000,  # 60 seconds instead of 30
+            full_state=False  # Don't request full state on every sync
+        )
             
     except Exception as e:
         logger.error(f"Matrix bot error: {e}")
@@ -749,11 +809,18 @@ async def handle_stats_command(client, room, event):
             stats_text += f"\n• Model: {model_name}"
         elif LLM_PROVIDER == "ollama":
             stats_text += f"\n• Model: {OLLAMA_MODEL}"
+            stats_text += f"\n• Keep-alive: {OLLAMA_KEEP_ALIVE}"
         
         # Add context configuration
         stats_text += f"\n\n**💾 Context Configuration:**"
         stats_text += f"\n• Room History: {MAX_ROOM_HISTORY} messages"
         stats_text += f"\n• Context Lookback: {MAX_CONTEXT_LOOKBACK} messages"
+        
+        # Add connection health status
+        stats_text += f"\n\n**🔌 Connection Health:**"
+        stats_text += f"\n• Keep-alive: Active (2-minute intervals)"
+        if LLM_PROVIDER == "ollama":
+            stats_text += f"\n• Model warming: Active (3-minute intervals)"
 
         # Send stats message with formatting
         await send_message(
