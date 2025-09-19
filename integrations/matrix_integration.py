@@ -35,12 +35,13 @@ stock_tracker = None
 world_clock = None
 price_tracker = None
 settings_manager = None
+system_monitor = None
 
 def initialize_handlers():
     """Initialize handlers after module is loaded to avoid circular imports"""
     global message_callback, mark_event_processed, invite_callback, joined_rooms
     global cleanup_old_context, meme_generator, stats_tracker, stock_tracker, world_clock, price_tracker
-    global settings_manager
+    global settings_manager, system_monitor
     
     from modules.message_handler import message_callback as mc, mark_event_processed as mep
     from modules.invite_handler import invite_callback as ic, joined_rooms as jr
@@ -51,6 +52,7 @@ def initialize_handlers():
     from modules.world_clock import world_clock as wc
     from modules.price_tracker import price_tracker as pt
     from modules.settings_manager import settings_manager as sm
+    from modules.system_monitor import system_monitor as sysm
     
     message_callback = mc
     mark_event_processed = mep
@@ -63,6 +65,7 @@ def initialize_handlers():
     world_clock = wc
     price_tracker = pt
     settings_manager = sm
+    system_monitor = sysm
 
 async def maintain_connection_health(client):
     """Maintain connection health and preload models"""
@@ -146,6 +149,9 @@ async def process_message(client, room, event):
     # Check if it's a setting command
     elif event.body.startswith('?setting'):
         await handle_setting_command(client, room, event)
+    # Check if it's a sys command
+    elif event.body.strip() == '?sys':
+        await handle_sys_command(client, room, event)
     else:
         await message_callback(client, room, event)
 
@@ -268,6 +274,7 @@ async def run_matrix_bot():
         print(f"📊 Summary: '{BOT_USERNAME} summary' for comprehensive chat analysis")
         print("📚 Help: ?help to see all available commands")
         print("📈 Stats: ?stats to see bot statistics")
+        print("🖥️ System: ?sys to see system resource usage")
         print("🕐 Clock: ?clock <city/country> for world time")
         print("💰 Price: ?price <crypto> [currency] for crypto/fiat prices")
         print("📊 Stocks: ?stonks <ticker> for stock market data")
@@ -317,6 +324,7 @@ async def handle_help_command(client, room, event):
 **General Commands:**
 • `?help` - Show this help message
 • `?stats` - Show bot statistics and enabled features
+• `?sys` - Show system resource usage (CPU, RAM, Disk)
 • `?setting` - Manage bot configuration (authorized users only)
 • `{BOT_USERNAME} <message>` - Chat with me by mentioning my name
 • Reply to any of my messages to continue the conversation
@@ -337,6 +345,10 @@ async def handle_help_command(client, room, event):
 • `?stonks <ticker>` - Get detailed stock information
 • `?stonks` - Get global market summary
 • Examples: `?stonks AAPL`, `?stonks MSFT`, `?stonks TSLA`
+
+**System Monitoring:**
+• `?sys` - Display current system resource usage
+  Shows CPU load, memory usage, and disk space
 
 **Settings Management (Authorized Users Only):**
 • `?setting help` - Show settings help and available options
@@ -359,6 +371,7 @@ async def handle_help_command(client, room, event):
 • 🔍 **Auto Search** - I'll automatically search for current events when needed
 • 📊 **Stock Market** - Real-time stock prices and market data
 • 🕐 **World Clock** - Get time for any city or country
+• 🖥️ **System Monitor** - Check server resource usage
 • ⚙️ **Live Settings** - Authorized users can update settings without restart
 
 **Tips:**
@@ -699,6 +712,49 @@ async def handle_setting_command(client, room, event):
     finally:
         await client.room_typing(room.room_id, typing_state=False)
 
+async def handle_sys_command(client, room, event):
+    """Handle system resource monitor command for Matrix"""
+    try:
+        # Track command usage
+        stats_tracker.record_command_usage('?sys')
+        stats_tracker.record_feature_usage('system_monitor')
+        
+        # Send typing indicator
+        await client.room_typing(room.room_id, typing_state=True)
+        
+        # Get system information
+        response = system_monitor.get_system_info()
+        
+        # Send the response with formatting
+        await send_message(
+            client,
+            room.room_id,
+            {
+                "msgtype": "m.text",
+                "body": response.replace("**", "").replace("•", "-"),  # Plain text fallback
+                "format": "org.matrix.custom.html",
+                "formatted_body": response.replace("**", "<strong>").replace("**", "</strong>")
+                                         .replace("•", "•")
+                                         .replace("\n", "<br/>")
+            }
+        )
+        
+        # Track sent message
+        stats_tracker.record_message_sent(room.room_id)
+        
+    except Exception as e:
+        logger.error(f"Error handling sys command: {e}")
+        await send_message(
+            client,
+            room.room_id,
+            {
+                "msgtype": "m.text",
+                "body": "Sorry, I couldn't retrieve system information. Please ensure psutil is installed and try again."
+            }
+        )
+    finally:
+        await client.room_typing(room.room_id, typing_state=False)
+
 async def handle_stats_command(client, room, event):
     """Handle stats command for Matrix"""
     try:
@@ -789,6 +845,7 @@ async def handle_stats_command(client, room, event):
         else:
             features_list.append("❌ Stock Market Data (disabled)")
         features_list.append("✅ World Clock")
+        features_list.append("✅ System Monitor")
         features_list.append("✅ URL Analysis")
         if settings_manager.is_web_search_enabled():
             features_list.append("✅ Web Search")

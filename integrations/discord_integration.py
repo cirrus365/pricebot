@@ -15,6 +15,7 @@ from modules.web_search import search_with_jina, fetch_url_content
 from modules.meme_generator import meme_generator
 from modules.world_clock import world_clock
 from modules.settings_manager import settings_manager
+from modules.system_monitor import system_monitor
 from modules.context import room_message_history, conversation_context
 from utils.formatting import format_code_blocks
 from utils.helpers import extract_urls_from_message, detect_code_in_message
@@ -235,6 +236,12 @@ class ChatbotCommands(commands.Cog):
             inline=False
         )
         
+        embed.add_field(
+            name="🖥️ System Monitor",
+            value="`?sys` - Display current system resource usage (CPU, RAM, Disk)",
+            inline=False
+        )
+        
         if settings_manager.is_meme_enabled():
             embed.add_field(
                 name="🎨 Meme Generation",
@@ -295,6 +302,30 @@ class ChatbotCommands(commands.Cog):
                 title="🕐 World Clock",
                 description=response,
                 color=discord.Color.blue()
+            )
+            
+            await ctx.send(embed=embed)
+        
+    @commands.command(name='sys', help='Display system resource usage')
+    async def sys_command(self, ctx):
+        """Get system resource information"""
+        async with ctx.typing():
+            # Get system information
+            response = system_monitor.get_system_info()
+            
+            # Create embed with appropriate color based on status
+            # Check if there are any warnings or critical states
+            if "🔴" in response:
+                color = discord.Color.red()
+            elif "⚠️" in response:
+                color = discord.Color.orange()
+            else:
+                color = discord.Color.green()
+            
+            embed = discord.Embed(
+                title="🖥️ System Resource Monitor",
+                description=response,
+                color=color
             )
             
             await ctx.send(embed=embed)
@@ -439,6 +470,12 @@ class ChatbotCommands(commands.Cog):
             inline=True
         )
         
+        embed.add_field(
+            name="System Monitor",
+            value="✅ Enabled",
+            inline=True
+        )
+        
         await ctx.send(embed=embed)
         
     @commands.command(name='ping', help='Check bot latency')
@@ -466,6 +503,7 @@ async def run_discord_bot():
     print("💬 Chat: Mention the bot or reply to its messages")
     print("⚙️ Settings: ?setting to manage configuration (authorized users only)")
     print("🕐 World clock: ?clock <city/country> for world time")
+    print("🖥️ System monitor: ?sys to check server resources")
     print(f"💰 Price tracking: ?price <crypto> [currency] or ?price <from> <to>")
     print("📊 Stock market: ?stonks <ticker> for stock data")
     if settings_manager.is_meme_enabled():
