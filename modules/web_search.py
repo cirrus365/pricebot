@@ -8,6 +8,13 @@ from utils.helpers import filter_bot_triggers, detect_language_from_url
 
 async def search_with_jina(query, num_results=5):
     """Search using Jina.ai's search API with timeout"""
+    # Import here to avoid circular dependency
+    from modules.settings_manager import settings_manager
+    
+    # Check if web search is enabled
+    if not settings_manager.is_web_search_enabled():
+        return None
+    
     filtered_query = filter_bot_triggers(query)
     
     timeout = aiohttp.ClientTimeout(total=SEARCH_TIMEOUT)
@@ -62,6 +69,13 @@ async def search_with_jina(query, num_results=5):
 
 async def fetch_url_with_jina(url):
     """Fetch and parse content from URL using Jina.ai reader with timeout"""
+    # Import here to avoid circular dependency
+    from modules.settings_manager import settings_manager
+    
+    # Check if web search is enabled
+    if not settings_manager.is_web_search_enabled():
+        return None
+    
     timeout = aiohttp.ClientTimeout(total=URL_FETCH_TIMEOUT)
     async with aiohttp.ClientSession(timeout=timeout) as session:
         try:
@@ -141,6 +155,13 @@ async def fetch_url_content(url):
 
 async def search_technical_docs(query):
     """Search technical documentation using Jina with site-specific queries"""
+    # Import here to avoid circular dependency
+    from modules.settings_manager import settings_manager
+    
+    # Check if web search is enabled
+    if not settings_manager.is_web_search_enabled():
+        return None
+    
     tech_queries = [
         f"{query} site:stackoverflow.com",
         f"{query} site:docs.python.org OR site:github.com",
@@ -158,6 +179,13 @@ async def search_technical_docs(query):
 
 async def needs_web_search(prompt, room_context=None):
     """Determine if a query actually needs web search for current information"""
+    # Import here to avoid circular dependency
+    from modules.settings_manager import settings_manager
+    
+    # First check if web search is enabled
+    if not settings_manager.is_web_search_enabled():
+        return False
+    
     prompt_lower = prompt.lower()
     
     # Keywords that strongly indicate need for current/latest information

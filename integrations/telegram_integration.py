@@ -93,6 +93,7 @@ class TelegramBot:
             welcome_message += "🎨 /meme <topic> - Generate memes with AI\n"
             
         welcome_message += (
+            "⚙️ /setting - Manage bot settings\n"
             "📊 /stats - Bot statistics\n"
             "❓ /help - Show all commands\n\n"
             "Let's get started! Ask me anything! 🚀"
@@ -134,12 +135,39 @@ class TelegramBot:
             "🔍 /search <query> - Search the web\n"
             "📊 /stats - Bot statistics\n"
             "🏓 /ping - Check bot latency\n\n"
+            "*Settings:*\n"
+            "⚙️ /setting - View all settings\n"
+            "/setting <name> <value> - Change a setting\n"
+            "/setting whitelist add/remove <username> - Manage whitelist\n\n"
             "*Other:*\n"
             "❓ /help - Show this message\n"
             "👋 /start - Welcome message\n"
         )
         
         await update.message.reply_text(help_text, parse_mode=ParseMode.MARKDOWN)
+        
+    async def setting_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /setting command"""
+        if not self.is_authorized(update):
+            await update.message.reply_text("❌ Sorry, you're not authorized to use this bot.")
+            return
+        
+        user_id = str(update.effective_user.id) if update.effective_user else None
+        
+        # Send typing indicator
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+        
+        # Handle setting command
+        response = await settings_manager.handle_setting_command(
+            args=context.args if context.args else [],
+            user_id=user_id,
+            platform='telegram'
+        )
+        
+        # Format response for Telegram markdown
+        response = response.replace("**", "*")  # Convert bold markers
+        
+        await update.message.reply_text(response, parse_mode=ParseMode.MARKDOWN)
         
     async def clock_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /clock command"""
@@ -259,6 +287,10 @@ class TelegramBot:
         if not self.is_authorized(update):
             await update.message.reply_text("❌ Sorry, you're not authorized to use this bot.")
             return
+        
+        if not settings_manager.is_web_search_enabled():
+            await update.message.reply_text("Web search is currently disabled. An authorized user can enable it with: /setting search on")
+            return
             
         if not context.args:
             await update.message.reply_text("Please provide a search query. Example: /search Python tutorials")
@@ -296,7 +328,11 @@ class TelegramBot:
             f"✅ Bot Status: Online\n\n"
             f"*Features:*\n"
             f"• Meme Generation: {'✅ Enabled' if settings_manager.is_meme_enabled() else '❌ Disabled'}\n"
-            f"• Web Search: {'✅ Enabled' if settings_manager.is_web_search_enabled() else '❌ Disabled'}"
+            f"• Web Search: {'✅ Enabled' if settings_manager.is_web_search_enabled() else '❌ Disabled'}\n"
+            f"• Auto-Invite: {'✅ Enabled' if settings_manager.is_auto_invite_enabled() else '❌ Disabled'}\n\n"
+            f"*LLM Settings:*\n"
+            f"• Main Model: {settings_manager.get_setting_value('main_llm')}\n"
+            f"• Fallback Model: {settings_manager.get_setting_value('fallback_llm') or 'None'}"
         )
         await update.message.reply_text(stats_message, parse_mode=ParseMode.MARKDOWN)
         
@@ -340,10 +376,10 @@ class TelegramBot:
         # Get conversation context
         context_str = self.get_conversation_context(chat_id)
         
-        # Check for URLs in message
+        # Check for URLs in message (only if web search is enabled)
         urls = extract_urls_from_message(message_text)
         url_contents = None
-        if urls:
+        if urls and settings_manager.is_web_search_enabled():
             url_contents = []
             for url in urls[:2]:  # Limit to 2 URLs
                 url_content = await fetch_url_content(url)
@@ -403,6 +439,7 @@ async def run_telegram_bot():
         # Add command handlers
         application.add_handler(CommandHandler("start", bot.start_command))
         application.add_handler(CommandHandler("help", bot.help_command))
+        application.add_handler(CommandHandler("setting", bot.setting_command))
         application.add_handler(CommandHandler("clock", bot.clock_command))
         application.add_handler(CommandHandler("price", bot.price_command))
         application.add_handler(CommandHandler("xmr", bot.xmr_command))
@@ -429,14 +466,18 @@ async def run_telegram_bot():
         print(f"✅ Bot Name: {BOT_USERNAME.capitalize()}")
         print("📝 Commands: /help to see all commands")
         print("💬 Chat: Just send a message to chat")
+        print("⚙️ Settings: /setting to manage bot settings")
         print("🕐 World clock: /clock <city/country> for world time")
         print("💰 Price tracking: /price <crypto> [currency] or /price <from> <to>")
         print("📊 Stock market: /stonks <ticker> for stock data")
         if settings_manager.is_meme_enabled():
             print("🎨 Meme generation: /meme <topic> to create memes")
         else:
-            print("🎨 Meme generation: DISABLED (authorized users can enable)")
-        print("🔍 Web search: /search <query>")
+            print("🎨 Meme generation: DISABLED (use /setting meme on to enable)")
+        if settings_manager.is_web_search_enabled():
+            print("🔍 Web search: /search <query>")
+        else:
+            print("🔍 Web search: DISABLED (use /setting search on to enable)")
         print("📊 Stats: /stats for bot statistics")
         if TELEGRAM_ALLOWED_USERS:
             print(f"👤 Allowed users: {', '.join(TELEGRAM_ALLOWED_USERS)}")

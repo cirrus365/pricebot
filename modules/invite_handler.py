@@ -1,20 +1,23 @@
 """Room invite handling"""
 from nio import MatrixRoom, InviteMemberEvent
-from config.settings import ENABLE_AUTO_INVITE, ALLOWED_INVITE_USERS
+from config.settings import ALLOWED_INVITE_USERS
 
 # Store joined rooms
 joined_rooms = set()
 
 async def invite_callback(client, room: MatrixRoom, event: InviteMemberEvent):
     """Handle room invites"""
+    # Import here to avoid circular dependency
+    from modules.settings_manager import settings_manager
+    
     print(f"[INVITE] Received invite to room {room.room_id} from {event.sender}")
     
     # Only process invites for our user
     if event.state_key != client.user_id:
         return
     
-    # Check if auto-invite is disabled
-    if not ENABLE_AUTO_INVITE:
+    # Check if auto-invite is disabled using settings manager
+    if not settings_manager.is_auto_invite_enabled():
         print(f"[INVITE] Auto-invite is disabled. Ignoring invite from {event.sender}")
         return
     
