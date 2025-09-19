@@ -24,90 +24,15 @@ class SettingsManager:
             'telegram': os.getenv("SETTINGS_AUTHORIZED_TELEGRAM_USERS", "").split(",") if os.getenv("SETTINGS_AUTHORIZED_TELEGRAM_USERS") else []
         }
         
-        # Define configurable settings with their types and descriptions
-        self.configurable_settings = {
-            'llm_temperature': {
-                'type': 'float',
-                'min': 0.0,
-                'max': 1.0,
-                'description': 'LLM temperature (0.0-1.0, higher = more creative)',
-                'env_var': 'OLLAMA_TEMPERATURE'
-            },
-            'max_context_lookback': {
-                'type': 'int',
-                'min': 5,
-                'max': 100,
-                'description': 'Number of messages to include in context',
-                'env_var': 'MAX_CONTEXT_LOOKBACK'
-            },
-            'max_room_history': {
-                'type': 'int',
-                'min': 10,
-                'max': 500,
-                'description': 'Maximum messages to store per room',
-                'env_var': 'MAX_ROOM_HISTORY'
-            },
-            'llm_timeout': {
-                'type': 'int',
-                'min': 10,
-                'max': 120,
-                'description': 'LLM response timeout in seconds',
-                'env_var': 'LLM_TIMEOUT'
-            },
-            'search_timeout': {
-                'type': 'int',
-                'min': 5,
-                'max': 60,
-                'description': 'Web search timeout in seconds',
-                'env_var': 'SEARCH_TIMEOUT'
-            },
-            'url_fetch_timeout': {
-                'type': 'int',
-                'min': 5,
-                'max': 60,
-                'description': 'URL fetch timeout in seconds',
-                'env_var': 'URL_FETCH_TIMEOUT'
-            },
-            'price_cache_ttl': {
-                'type': 'int',
-                'min': 60,
-                'max': 3600,
-                'description': 'Price data cache TTL in seconds',
-                'env_var': 'PRICE_CACHE_TTL'
-            },
-            'enable_meme_generation': {
-                'type': 'bool',
-                'description': 'Enable/disable meme generation feature',
-                'env_var': 'ENABLE_MEME_GENERATION'
-            },
-            'enable_price_tracking': {
-                'type': 'bool',
-                'description': 'Enable/disable price tracking feature',
-                'env_var': 'ENABLE_PRICE_TRACKING'
-            },
-            'enable_auto_invite': {
-                'type': 'bool',
-                'description': 'Enable/disable auto-accepting room invites (Matrix only)',
-                'env_var': 'ENABLE_AUTO_INVITE'
-            },
-            'max_retries': {
-                'type': 'int',
-                'min': 1,
-                'max': 10,
-                'description': 'Maximum retry attempts for failed operations',
-                'env_var': 'MAX_RETRIES'
-            },
-            'base_retry_delay': {
-                'type': 'int',
-                'min': 1,
-                'max': 10,
-                'description': 'Base delay between retries in seconds',
-                'env_var': 'BASE_RETRY_DELAY'
-            }
-        }
-        
         # Load persisted settings if available
         self.runtime_settings = self.load_settings()
+        
+        # Initialize invite whitelist from environment or saved settings
+        self.invite_whitelist = self.runtime_settings.get('invite_whitelist', [])
+        if not self.invite_whitelist:
+            env_whitelist = os.getenv("ALLOWED_INVITE_USERS", "")
+            if env_whitelist:
+                self.invite_whitelist = env_whitelist.split(",")
         
     def load_settings(self) -> Dict[str, Any]:
         """Load settings from file if persistence is enabled"""
@@ -129,9 +54,12 @@ class SettingsManager:
             return
             
         try:
+            # Include invite whitelist in saved settings
+            self.runtime_settings['invite_whitelist'] = self.invite_whitelist
+            
             with open(self.settings_file, 'w') as f:
                 json.dump(self.runtime_settings, f, indent=2)
-                logger.info(f"Saved {len(self.runtime_settings)} settings to {self.settings_file}")
+                logger.info(f"Saved settings to {self.settings_file}")
         except Exception as e:
             logger.error(f"Error saving settings file: {e}")
             
@@ -156,68 +84,102 @@ class SettingsManager:
         if setting_name in self.runtime_settings:
             return self.runtime_settings[setting_name]
             
-        # Fall back to environment variable
-        if setting_name in self.configurable_settings:
-            env_var = self.configurable_settings[setting_name]['env_var']
-            env_value = os.getenv(env_var)
-            
+        # Fall back to environment variable for specific settings
+        env_mappings = {
+            'main_llm': 'OPENROUTER_MODEL' if os.getenv('LLM_PROVIDER', 'openrouter').lower() == 'openrouter' else 'OLLAMA_MODEL',
+            'fallback_llm': 'OPENROUTER_FALLBACK_MODEL',
+            'auto_invite': 'ENABLE_AUTO_INVITE',
+            'meme_generator': 'ENABLE_MEME_GENERATION',
+            'web_search': 'ENABLE_WEB_SEARCH'
+        }
+        
+        if setting_name in env_mappings:
+            env_value = os.getenv(env_mappings[setting_name])
             if env_value is not None:
-                setting_type = self.configurable_settings[setting_name]['type']
-                if setting_type == 'int':
-                    return int(env_value)
-                elif setting_type == 'float':
-                    return float(env_value)
-                elif setting_type == 'bool':
+                if setting_name in ['auto_invite', 'meme_generator', 'web_search']:
                     return env_value.lower() == 'true'
-                else:
-                    return env_value
-                    
+                return env_value
+                
         return None
         
     def update_setting(self, setting_name: str, value: Any) -> tuple[bool, str]:
         """Update a setting value"""
-        if setting_name not in self.configurable_settings:
+        
+        # Handle main LLM model
+        if setting_name == 'main_llm':
+            self.runtime_settings['main_llm'] = value
+            # Update appropriate environment variable based on provider
+            if os.getenv('LLM_PROVIDER', 'openrouter').lower() == 'openrouter':
+                os.environ['OPENROUTER_MODEL'] = str(value)
+            else:
+                os.environ['OLLAMA_MODEL'] = str(value)
+            self.save_settings()
+            return True, f"Main LLM model updated to: {value}"
+            
+        # Handle fallback LLM model
+        elif setting_name == 'fallback_llm':
+            self.runtime_settings['fallback_llm'] = value
+            os.environ['OPENROUTER_FALLBACK_MODEL'] = str(value)
+            self.save_settings()
+            return True, f"Fallback LLM model updated to: {value}"
+            
+        # Handle auto invite toggle
+        elif setting_name == 'auto_invite':
+            if isinstance(value, str):
+                value = value.lower() in ['true', 'on', 'enable', 'enabled', '1', 'yes']
+            self.runtime_settings['auto_invite'] = value
+            os.environ['ENABLE_AUTO_INVITE'] = 'true' if value else 'false'
+            self.save_settings()
+            return True, f"Auto invite {'enabled' if value else 'disabled'}"
+            
+        # Handle meme generator toggle
+        elif setting_name == 'meme_generator':
+            if isinstance(value, str):
+                value = value.lower() in ['true', 'on', 'enable', 'enabled', '1', 'yes']
+            self.runtime_settings['meme_generator'] = value
+            os.environ['ENABLE_MEME_GENERATION'] = 'true' if value else 'false'
+            self.save_settings()
+            return True, f"Meme generator {'enabled' if value else 'disabled'}"
+            
+        # Handle web search toggle
+        elif setting_name == 'web_search':
+            if isinstance(value, str):
+                value = value.lower() in ['true', 'on', 'enable', 'enabled', '1', 'yes']
+            self.runtime_settings['web_search'] = value
+            os.environ['ENABLE_WEB_SEARCH'] = 'true' if value else 'false'
+            self.save_settings()
+            return True, f"Web search {'enabled' if value else 'disabled'}"
+            
+        else:
             return False, f"Unknown setting: {setting_name}"
             
-        config = self.configurable_settings[setting_name]
-        setting_type = config['type']
+    def manage_whitelist(self, action: str, username: str) -> tuple[bool, str]:
+        """Add or remove users from invite whitelist"""
+        username = username.strip()
         
-        # Validate and convert value
-        try:
-            if setting_type == 'int':
-                value = int(value)
-                if 'min' in config and value < config['min']:
-                    return False, f"Value must be at least {config['min']}"
-                if 'max' in config and value > config['max']:
-                    return False, f"Value must be at most {config['max']}"
-                    
-            elif setting_type == 'float':
-                value = float(value)
-                if 'min' in config and value < config['min']:
-                    return False, f"Value must be at least {config['min']}"
-                if 'max' in config and value > config['max']:
-                    return False, f"Value must be at most {config['max']}"
-                    
-            elif setting_type == 'bool':
-                if isinstance(value, str):
-                    value = value.lower() in ['true', '1', 'yes', 'on', 'enabled']
-                else:
-                    value = bool(value)
-                    
-        except (ValueError, TypeError) as e:
-            return False, f"Invalid value type: expected {setting_type}"
+        if action == 'add':
+            if username not in self.invite_whitelist:
+                self.invite_whitelist.append(username)
+                # Update environment variable
+                os.environ['ALLOWED_INVITE_USERS'] = ','.join(self.invite_whitelist)
+                self.save_settings()
+                return True, f"Added '{username}' to invite whitelist"
+            else:
+                return False, f"'{username}' is already in the invite whitelist"
+                
+        elif action == 'remove':
+            if username in self.invite_whitelist:
+                self.invite_whitelist.remove(username)
+                # Update environment variable
+                os.environ['ALLOWED_INVITE_USERS'] = ','.join(self.invite_whitelist)
+                self.save_settings()
+                return True, f"Removed '{username}' from invite whitelist"
+            else:
+                return False, f"'{username}' is not in the invite whitelist"
+                
+        else:
+            return False, f"Invalid whitelist action: {action}"
             
-        # Update runtime setting
-        self.runtime_settings[setting_name] = value
-        
-        # Also update the environment variable for immediate effect
-        os.environ[config['env_var']] = str(value)
-        
-        # Save to file if persistence is enabled
-        self.save_settings()
-        
-        return True, f"Setting '{setting_name}' updated to: {value}"
-        
     async def handle_setting_command(self, args: List[str], user_id: str, platform: str) -> str:
         """Handle setting command from users"""
         
@@ -236,14 +198,47 @@ class SettingsManager:
         if args[0] == 'list':
             return self.get_settings_list()
             
+        # Handle whitelist management
+        if args[0] == 'whitelist':
+            if len(args) < 3:
+                return "❌ Invalid syntax. Use: `?setting whitelist add/remove <username>`"
+            action = args[1].lower()
+            username = ' '.join(args[2:])
+            success, message = self.manage_whitelist(action, username)
+            return f"✅ {message}" if success else f"❌ {message}"
+            
+        # Handle other settings
         if len(args) < 2:
             return "❌ Invalid syntax. Use: `?setting <name> <value>` or `?setting help`"
             
-        setting_name = args[0]
+        setting_name = args[0].lower()
         value = ' '.join(args[1:])
         
+        # Map user-friendly names to internal setting names
+        setting_map = {
+            'main_llm': 'main_llm',
+            'main': 'main_llm',
+            'llm': 'main_llm',
+            'model': 'main_llm',
+            'fallback_llm': 'fallback_llm',
+            'fallback': 'fallback_llm',
+            'auto_invite': 'auto_invite',
+            'autoinvite': 'auto_invite',
+            'invite': 'auto_invite',
+            'meme': 'meme_generator',
+            'memes': 'meme_generator',
+            'meme_generator': 'meme_generator',
+            'web': 'web_search',
+            'search': 'web_search',
+            'web_search': 'web_search',
+            'websearch': 'web_search'
+        }
+        
+        if setting_name not in setting_map:
+            return f"❌ Unknown setting: {setting_name}. Use `?setting help` to see available settings."
+            
         # Update the setting
-        success, message = self.update_setting(setting_name, value)
+        success, message = self.update_setting(setting_map[setting_name], value)
         
         if success:
             return f"✅ {message}"
@@ -252,30 +247,38 @@ class SettingsManager:
             
     def get_help_text(self) -> str:
         """Get help text for settings management"""
-        help_text = """**⚙️ Settings Management Help**
+        help_text = """**⚙️ Settings Management (Authorized Users Only)**
 
 **Available Commands:**
 • `?setting help` - Show this help message
-• `?setting list` - Display all configurable settings and their current values
+• `?setting list` - Display current settings values
 • `?setting <name> <value>` - Update a setting
 
 **Configurable Settings:**
-"""
-        
-        for name, config in self.configurable_settings.items():
-            current_value = self.get_setting_value(name)
-            help_text += f"\n• **{name}** - {config['description']}"
-            
-            if config['type'] in ['int', 'float']:
-                if 'min' in config and 'max' in config:
-                    help_text += f"\n  Range: {config['min']} to {config['max']}"
-            elif config['type'] == 'bool':
-                help_text += f"\n  Values: true/false"
-                
-            if current_value is not None:
-                help_text += f"\n  Current: `{current_value}`"
-                
-        help_text += "\n\n**Note:** Only authorized users can manage settings."
+
+• **main_llm** (or: main, llm, model) - Change the main LLM model
+  Example: `?setting main_llm gpt-4`
+  
+• **fallback_llm** (or: fallback) - Change the fallback LLM model
+  Example: `?setting fallback_llm gpt-3.5-turbo`
+  
+• **auto_invite** (or: autoinvite, invite) - Toggle auto-accepting room invites
+  Values: true/false, on/off, enable/disable
+  Example: `?setting auto_invite false`
+  
+• **meme_generator** (or: meme, memes) - Toggle meme generation feature
+  Values: true/false, on/off, enable/disable
+  Example: `?setting meme on`
+  
+• **web_search** (or: web, search, websearch) - Toggle web search feature
+  Values: true/false, on/off, enable/disable
+  Example: `?setting web_search enable`
+
+**Whitelist Management:**
+• `?setting whitelist add <username>` - Add user to invite whitelist
+• `?setting whitelist remove <username>` - Remove user from invite whitelist
+
+Example: `?setting whitelist add @user:matrix.org`"""
         
         return help_text
         
@@ -283,19 +286,34 @@ class SettingsManager:
         """Get a formatted list of all settings and their values"""
         settings_text = "**⚙️ Current Settings**\n\n"
         
-        for name, config in self.configurable_settings.items():
-            value = self.get_setting_value(name)
-            if value is not None:
-                settings_text += f"• **{name}**: `{value}`\n"
-                settings_text += f"  _{config['description']}_\n"
-            else:
-                settings_text += f"• **{name}**: _not set_\n"
-                settings_text += f"  _{config['description']}_\n"
-                
-        # Add runtime-only settings that might have been loaded from file
-        for name, value in self.runtime_settings.items():
-            if name not in self.configurable_settings:
-                settings_text += f"• **{name}**: `{value}` _(custom setting)_\n"
+        # Main LLM
+        main_llm = self.get_setting_value('main_llm')
+        provider = os.getenv('LLM_PROVIDER', 'openrouter')
+        settings_text += f"• **Main LLM Model** ({provider}): `{main_llm if main_llm else 'not set'}`\n"
+        
+        # Fallback LLM
+        fallback_llm = self.get_setting_value('fallback_llm')
+        settings_text += f"• **Fallback LLM Model**: `{fallback_llm if fallback_llm else 'not set'}`\n"
+        
+        # Auto invite
+        auto_invite = self.get_setting_value('auto_invite')
+        settings_text += f"• **Auto Invite**: `{'enabled' if auto_invite else 'disabled'}`\n"
+        
+        # Meme generator
+        meme_gen = self.get_setting_value('meme_generator')
+        settings_text += f"• **Meme Generator**: `{'enabled' if meme_gen else 'disabled'}`\n"
+        
+        # Web search
+        web_search = self.get_setting_value('web_search')
+        settings_text += f"• **Web Search**: `{'enabled' if web_search else 'disabled'}`\n"
+        
+        # Invite whitelist
+        settings_text += f"\n**Invite Whitelist** ({len(self.invite_whitelist)} users):\n"
+        if self.invite_whitelist:
+            for user in self.invite_whitelist:
+                settings_text += f"  • {user}\n"
+        else:
+            settings_text += "  _Empty - all users can invite the bot_\n"
                 
         return settings_text
 
