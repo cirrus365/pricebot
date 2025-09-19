@@ -34,11 +34,13 @@ stats_tracker = None
 stock_tracker = None
 world_clock = None
 price_tracker = None
+settings_manager = None
 
 def initialize_handlers():
     """Initialize handlers after module is loaded to avoid circular imports"""
     global message_callback, mark_event_processed, invite_callback, joined_rooms
     global cleanup_old_context, meme_generator, stats_tracker, stock_tracker, world_clock, price_tracker
+    global settings_manager
     
     from modules.message_handler import message_callback as mc, mark_event_processed as mep
     from modules.invite_handler import invite_callback as ic, joined_rooms as jr
@@ -48,6 +50,7 @@ def initialize_handlers():
     from modules.stock_tracker import stock_tracker as stk
     from modules.world_clock import world_clock as wc
     from modules.price_tracker import price_tracker as pt
+    from modules.settings_manager import settings_manager as sm
     
     message_callback = mc
     mark_event_processed = mep
@@ -59,6 +62,7 @@ def initialize_handlers():
     stock_tracker = stk
     world_clock = wc
     price_tracker = pt
+    settings_manager = sm
 
 async def process_message(client, room, event):
     """Process a message"""
@@ -88,6 +92,9 @@ async def process_message(client, room, event):
     # Check if it's a stonks command
     elif event.body.startswith('?stonks'):
         await handle_stonks_command(client, room, event)
+    # Check if it's a setting command
+    elif event.body.startswith('?setting'):
+        await handle_setting_command(client, room, event)
     else:
         await message_callback(client, room, event)
 
@@ -210,6 +217,7 @@ async def run_matrix_bot():
         print("🕐 Clock: ?clock <city/country> for world time")
         print("💰 Price: ?price <crypto> [currency] for crypto/fiat prices")
         print("📊 Stocks: ?stonks <ticker> for stock market data")
+        print("⚙️ Settings: ?setting to manage bot configuration (authorized users only)")
         if ENABLE_MEME_GENERATION:
             print("🎨 Meme generation: ?meme <topic> to create memes")
         print("🧠 Optimized Context: Tracking 100 messages (reduced for performance)")
@@ -247,6 +255,7 @@ async def handle_help_command(client, room, event):
 **General Commands:**
 • `?help` - Show this help message
 • `?stats` - Show bot statistics and enabled features
+• `?setting` - Manage bot configuration (authorized users only)
 • `{BOT_USERNAME} <message>` - Chat with me by mentioning my name
 • Reply to any of my messages to continue the conversation
 • `{BOT_USERNAME} !reset` - Clear conversation context for this room
@@ -267,6 +276,11 @@ async def handle_help_command(client, room, event):
 • `?stonks` - Get global market summary
 • Examples: `?stonks AAPL`, `?stonks MSFT`, `?stonks TSLA`
 
+**Settings Management (Authorized Users Only):**
+• `?setting help` - Show settings help and available options
+• `?setting list` - Display current settings values
+• `?setting <name> <value>` - Update a setting
+
 **Fun & Utility:**"""
         
         if ENABLE_MEME_GENERATION:
@@ -283,6 +297,7 @@ async def handle_help_command(client, room, event):
 • 🔍 **Auto Search** - I'll automatically search for current events when needed
 • 📊 **Stock Market** - Real-time stock prices and market data
 • 🕐 **World Clock** - Get time for any city or country
+• ⚙️ **Live Settings** - Authorized users can update settings without restart
 
 **Tips:**
 • I'm particularly knowledgeable about programming, Linux, security, and privacy
@@ -535,6 +550,57 @@ async def handle_stonks_command(client, room, event):
     finally:
         await client.room_typing(room.room_id, typing_state=False)
 
+async def handle_setting_command(client, room, event):
+    """Handle setting command for Matrix"""
+    try:
+        # Track command usage
+        stats_tracker.record_command_usage('?setting')
+        stats_tracker.record_feature_usage('settings_management')
+        
+        # Send typing indicator
+        await client.room_typing(room.room_id, typing_state=True)
+        
+        # Parse the command
+        parts = event.body.strip().split(maxsplit=1)
+        args = parts[1].split() if len(parts) > 1 else []
+        
+        # Get the user ID
+        user_id = event.sender
+        
+        # Handle the setting command
+        response = await settings_manager.handle_setting_command(args, user_id, 'matrix')
+        
+        # Send the response with formatting
+        await send_message(
+            client,
+            room.room_id,
+            {
+                "msgtype": "m.text",
+                "body": response.replace("**", "").replace("•", "-"),  # Plain text fallback
+                "format": "org.matrix.custom.html",
+                "formatted_body": response.replace("**", "<strong>").replace("**", "</strong>")
+                                         .replace("•", "•")
+                                         .replace("\n", "<br/>")
+                                         .replace("`", "<code>").replace("`", "</code>")
+            }
+        )
+        
+        # Track sent message
+        stats_tracker.record_message_sent(room.room_id)
+        
+    except Exception as e:
+        logger.error(f"Error handling setting command: {e}")
+        await send_message(
+            client,
+            room.room_id,
+            {
+                "msgtype": "m.text",
+                "body": "Sorry, I couldn't process the setting command. Please try again."
+            }
+        )
+    finally:
+        await client.room_typing(room.room_id, typing_state=False)
+
 async def handle_stats_command(client, room, event):
     """Handle stats command for Matrix"""
     try:
@@ -622,6 +688,7 @@ async def handle_stats_command(client, room, event):
         features_list.append("✅ Web Search")
         features_list.append("✅ Code Formatting")
         features_list.append("✅ Emoji Reactions")
+        features_list.append("✅ Settings Management")
         
         for feature in features_list:
             stats_text += f"\n• {feature}"

@@ -14,6 +14,7 @@ from modules.stock_tracker import stock_tracker
 from modules.web_search import search_with_jina, fetch_url_content
 from modules.meme_generator import meme_generator
 from modules.world_clock import world_clock
+from modules.settings_manager import settings_manager
 from utils.formatting import format_code_blocks
 from utils.helpers import extract_urls_from_message, detect_code_in_message
 
@@ -184,6 +185,12 @@ class ChatbotCommands(commands.Cog):
         )
         
         embed.add_field(
+            name="⚙️ Settings Management",
+            value="`?setting help` - Show settings help\n`?setting list` - Display current settings\n`?setting <name> <value>` - Update a setting (authorized users only)",
+            inline=False
+        )
+        
+        embed.add_field(
             name="🕐 World Clock",
             value="`?clock <city/country>` - Get current time for a location\n`?clock` - Get current UTC time",
             inline=False
@@ -222,6 +229,32 @@ class ChatbotCommands(commands.Cog):
         
         embed.set_footer(text=f"Made with 💜 by the {BOT_USERNAME.capitalize()} team")
         await ctx.send(embed=embed)
+        
+    @commands.command(name='setting', help='Manage bot settings (authorized users only)')
+    async def setting_command(self, ctx, *args):
+        """Handle setting command"""
+        async with ctx.typing():
+            # Get the user ID
+            user_id = str(ctx.author.id)
+            
+            # Handle the setting command
+            response = await settings_manager.handle_setting_command(list(args), user_id, 'discord')
+            
+            # Check if response is too long for embed
+            if len(response) > 4000:
+                # Split into multiple messages
+                chunks = [response[i:i+1900] for i in range(0, len(response), 1900)]
+                for chunk in chunks:
+                    await ctx.send(f"```\n{chunk}\n```")
+            else:
+                # Create embed
+                embed = discord.Embed(
+                    title="⚙️ Settings Management",
+                    description=response,
+                    color=discord.Color.blue()
+                )
+                
+                await ctx.send(embed=embed)
         
     @commands.command(name='clock', help='Get current time for a city or country')
     async def clock_command(self, ctx, *, location: str = None):
@@ -364,6 +397,7 @@ async def run_discord_bot():
     print(f"✅ Bot Name: {BOT_USERNAME.capitalize()}")
     print("📝 Commands: Use ? prefix (e.g., ?help)")
     print("💬 Chat: Mention the bot or reply to its messages")
+    print("⚙️ Settings: ?setting to manage configuration (authorized users only)")
     print("🕐 World clock: ?clock <city/country> for world time")
     print(f"💰 Price tracking: ?price <crypto> [currency] or ?price <from> <to>")
     print("📊 Stock market: ?stonks <ticker> for stock data")
