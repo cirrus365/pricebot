@@ -306,6 +306,8 @@ class SettingsManager:
             'stocks': 'stock_market',
             'stock_market': 'stock_market',
             'stockmarket': 'stock_market',
+            'stock_tracking': 'stock_market',
+            'stocktracking': 'stock_market',
             'stonks': 'stock_market'
         }
         
@@ -353,7 +355,7 @@ class SettingsManager:
   Values: true/false, on/off, enable/disable
   Example: `?setting price_tracking on`
 
-• **stock_market** (or: stock, stocks, stonks) - Toggle stock market data feature
+• **stock_market** (or: stock, stocks, stock_tracking, stonks) - Toggle stock market data feature
   Values: true/false, on/off, enable/disable
   Example: `?setting stocks enable`
 
