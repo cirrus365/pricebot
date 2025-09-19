@@ -4,9 +4,9 @@ import aiohttp
 import re
 from datetime import datetime
 from config.settings import (
-    LLM_PROVIDER, OPENROUTER_API_KEY, OPENROUTER_URL, OPENROUTER_MODEL,
+    LLM_PROVIDER, OPENROUTER_API_KEY, OPENROUTER_URL,
     OPENROUTER_FALLBACK_MODEL,
-    OLLAMA_URL, OLLAMA_MODEL, OLLAMA_KEEP_ALIVE, OLLAMA_NUM_PREDICT,
+    OLLAMA_URL, OLLAMA_KEEP_ALIVE, OLLAMA_NUM_PREDICT,
     OLLAMA_TEMPERATURE, OLLAMA_TOP_K, OLLAMA_TOP_P, OLLAMA_REPEAT_PENALTY,
     LLM_TIMEOUT, MAX_RETRIES, BASE_RETRY_DELAY, MAX_CONTEXT_LOOKBACK,
     FILTERED_WORDS, ENABLE_PRICE_TRACKING
@@ -17,6 +17,9 @@ from utils.formatting import summarize_search_results
 from modules.context import room_message_history, conversation_context, create_comprehensive_summary
 from modules.web_search import needs_web_search, search_with_jina, search_technical_docs
 from modules.price_tracker import price_tracker
+
+# Import settings_manager to get runtime settings
+from modules.settings_manager import settings_manager
 
 async def get_llm_reply_with_retry(prompt, context=None, previous_message=None, room_id=None, url_contents=None):
     """Wrapper with retry logic and exponential backoff"""
@@ -43,6 +46,14 @@ async def get_llm_reply_with_retry(prompt, context=None, previous_message=None, 
 async def call_ollama_api(messages, temperature=0.8):
     """Call Ollama API with the given messages"""
     timeout = aiohttp.ClientTimeout(total=LLM_TIMEOUT)
+    
+    # Get the current model from settings manager
+    current_model = settings_manager.get_setting_value('main_llm')
+    if not current_model and LLM_PROVIDER == "ollama":
+        # Fall back to environment variable if not set in runtime settings
+        from config.settings import OLLAMA_MODEL
+        current_model = OLLAMA_MODEL
+    
     async with aiohttp.ClientSession(timeout=timeout) as session:
         # Convert messages to Ollama format
         # Ollama expects a single prompt, so we'll combine the messages
@@ -67,7 +78,7 @@ async def call_ollama_api(messages, temperature=0.8):
         
         # Prepare Ollama API request
         data = {
-            "model": OLLAMA_MODEL,
+            "model": current_model,
             "prompt": full_prompt,
             "stream": False,
             "options": {
@@ -100,11 +111,18 @@ async def call_openrouter_api(messages, temperature=0.8, use_fallback=False):
     """Call OpenRouter API with the given messages, with optional fallback model"""
     timeout = aiohttp.ClientTimeout(total=LLM_TIMEOUT)
     
-    # Determine which model to use
-    model_to_use = OPENROUTER_MODEL
-    if use_fallback and OPENROUTER_FALLBACK_MODEL:
-        model_to_use = OPENROUTER_FALLBACK_MODEL
+    # Determine which model to use - check runtime settings first
+    if use_fallback:
+        model_to_use = settings_manager.get_setting_value('fallback_llm')
+        if not model_to_use:
+            model_to_use = OPENROUTER_FALLBACK_MODEL
         print(f"[INFO] Using fallback model: {model_to_use}")
+    else:
+        model_to_use = settings_manager.get_setting_value('main_llm')
+        if not model_to_use and LLM_PROVIDER == "openrouter":
+            # Fall back to environment variable if not set in runtime settings
+            from config.settings import OPENROUTER_MODEL
+            model_to_use = OPENROUTER_MODEL
     
     async with aiohttp.ClientSession(timeout=timeout) as session:
         headers = {
@@ -130,7 +148,8 @@ async def call_openrouter_api(messages, temperature=0.8, use_fallback=False):
                     print(error_msg)
                     
                     # Check if we should try fallback
-                    if not use_fallback and OPENROUTER_FALLBACK_MODEL and response.status in [429, 500, 502, 503, 504]:
+                    fallback_model = settings_manager.get_setting_value('fallback_llm') or OPENROUTER_FALLBACK_MODEL
+                    if not use_fallback and fallback_model and response.status in [429, 500, 502, 503, 504]:
                         print(f"[INFO] Primary model failed with status {response.status}, attempting fallback...")
                         return await call_openrouter_api(messages, temperature, use_fallback=True)
                     
@@ -139,7 +158,8 @@ async def call_openrouter_api(messages, temperature=0.8, use_fallback=False):
             print(f"[ERROR] OpenRouter request timed out after {LLM_TIMEOUT} seconds with model {model_to_use}")
             
             # Try fallback on timeout if available
-            if not use_fallback and OPENROUTER_FALLBACK_MODEL:
+            fallback_model = settings_manager.get_setting_value('fallback_llm') or OPENROUTER_FALLBACK_MODEL
+            if not use_fallback and fallback_model:
                 print(f"[INFO] Primary model timed out, attempting fallback...")
                 return await call_openrouter_api(messages, temperature, use_fallback=True)
             
@@ -148,7 +168,8 @@ async def call_openrouter_api(messages, temperature=0.8, use_fallback=False):
             print(f"Error calling OpenRouter API with model {model_to_use}: {e}")
             
             # Try fallback on other errors if available
-            if not use_fallback and OPENROUTER_FALLBACK_MODEL:
+            fallback_model = settings_manager.get_setting_value('fallback_llm') or OPENROUTER_FALLBACK_MODEL
+            if not use_fallback and fallback_model:
                 print(f"[INFO] Primary model failed with error, attempting fallback...")
                 return await call_openrouter_api(messages, temperature, use_fallback=True)
             
@@ -279,9 +300,9 @@ async def get_llm_reply(prompt, context=None, previous_message=None, room_id=Non
         
         filtered_prompt = filtered_prompt + url_summary
     
-    # Smart web search detection
+    # Smart web search detection - check if web search is enabled
     should_search = False
-    if not wants_summary and not about_bot and not url_contents and not is_price_query:
+    if not wants_summary and not about_bot and not url_contents and not is_price_query and settings_manager.is_web_search_enabled():
         should_search = await needs_web_search(filtered_prompt, room_context)
     
     # Search for technical docs if it's a technical question
