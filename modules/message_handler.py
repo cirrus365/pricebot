@@ -190,48 +190,48 @@ async def message_callback(client, room: MatrixRoom, event: RoomMessageText):
     # Maybe react to the message
     await maybe_react(client, room.room_id, event.event_id, event.body)
     
-    # Check if message starts with ? for commands
+    # Check if message starts with ? for commands - handle them directly here
     if event.body.strip().startswith('?'):
-        # Handle ? prefix commands
         command_parts = event.body.strip().split()
         command = command_parts[0].lower()
         
         # Track command usage
         stats_tracker.record_command_usage(command)
         
-        # Handle ?price command
-        if command == '?price' and ENABLE_PRICE_TRACKING:
-            if len(command_parts) >= 2:
-                # Build the price query from remaining parts
-                price_query = ' '.join(command_parts[1:])
-                price_response = await price_tracker.get_price_response(f"price {price_query}")
-                if price_response:
-                    print(f"[DEBUG] Processing ?price command: {price_query}")
-                    await send_formatted_message(client, room.room_id, price_response)
-                    stats_tracker.record_feature_usage('price_tracking')
-                    return
-            else:
-                await client.room_send(
-                    room_id=room.room_id,
-                    message_type="m.room.message",
-                    content={
-                        "msgtype": "m.text",
-                        "body": "Usage: ?price <crypto> [currency]\nExamples: ?price xmr usd, ?price btc, ?price usd aud"
-                    }
-                )
-                return
+        # Import command handlers to avoid circular imports
+        from integrations.matrix_integration import (
+            handle_help_command, handle_clock_command, handle_price_command,
+            handle_meme_command, handle_stats_command, handle_stonks_command,
+            handle_setting_command, handle_sys_command
+        )
         
-        # Handle ?stonks command (basic handling, main logic in matrix_integration.py)
+        # Handle commands directly
+        if command == '?help':
+            await handle_help_command(client, room, event)
+            return
+        elif command == '?clock':
+            await handle_clock_command(client, room, event)
+            return
+        elif command == '?price':
+            await handle_price_command(client, room, event)
+            return
+        elif command == '?meme':
+            await handle_meme_command(client, room, event)
+            return
+        elif command == '?stats':
+            await handle_stats_command(client, room, event)
+            return
         elif command == '?stonks':
-            # This is handled in matrix_integration.py
-            # We just track it here for stats
-            stats_tracker.record_feature_usage('stock_tracking')
+            await handle_stonks_command(client, room, event)
+            return
+        elif command == '?setting':
+            await handle_setting_command(client, room, event)
+            return
+        elif command == '?sys':
+            await handle_sys_command(client, room, event)
             return
         
-        # ?help command is handled in matrix_integration.py
-        # ?meme command is handled in matrix_integration.py
-        # ?stats command is handled in matrix_integration.py
-        # Let those handlers process these commands
+        # Unknown command - don't process further
         return
     
     # Check if this is a reply to a message
@@ -267,30 +267,6 @@ async def message_callback(client, room: MatrixRoom, event: RoomMessageText):
     )
     
     if should_respond:
-        # Try to add to queue (non-blocking) to prevent overload
-        try:
-            request_queue.put_nowait({
-                'room_id': room.room_id,
-                'event': event,
-                'timestamp': datetime.now()
-            })
-        except QueueFull:
-            await client.room_send(
-                room_id=room.room_id,
-                message_type="m.room.message",
-                content={
-                    "msgtype": "m.text",
-                    "body": "Yo I'm getting slammed with requests rn, gimme a sec! 😅"
-                }
-            )
-            return
-        finally:
-            # Clear the queue item after processing
-            try:
-                request_queue.get_nowait()
-            except:
-                pass
-        
         # Check for reset command
         if "!reset" in event.body.lower():
             # Clear the room's message history
@@ -335,12 +311,13 @@ async def message_callback(client, room: MatrixRoom, event: RoomMessageText):
         await client.room_typing(room.room_id, True)
         
         try:
-            # Use the retry wrapper
+            # Use the retry wrapper - pass client for context
             reply = await get_llm_reply_with_retry(
                 prompt=prompt,
                 previous_message=previous_message,
                 room_id=room.room_id,
-                url_contents=url_contents
+                url_contents=url_contents,
+                client=client
             )
             
             # Track if web search was used (check for search indicators in response)

@@ -118,58 +118,6 @@ async def maintain_connection_health(client):
             # Don't crash the monitor, just continue
             await asyncio.sleep(60)
 
-async def process_message(client, room, event):
-    """Process a message"""
-    # Ignore own messages
-    if event.sender == client.user_id:
-        return
-        
-    # Mark command events as processed to prevent duplicate handling
-    if event.body.strip().startswith('?'):
-        mark_event_processed(event.event_id)
-    
-    # Check if it's a help command
-    if event.body.strip() == '?help':
-        await handle_help_command(client, room, event)
-    # Check if it's a clock command
-    elif event.body.startswith('?clock'):
-        await handle_clock_command(client, room, event)
-    # Check if it's a price command
-    elif event.body.startswith('?price'):
-        await handle_price_command(client, room, event)
-    # Check if it's a meme command
-    elif event.body.startswith('?meme'):
-        await handle_meme_command(client, room, event)
-    # Check if it's a stats command
-    elif event.body.strip() == '?stats':
-        await handle_stats_command(client, room, event)
-    # Check if it's a stonks command
-    elif event.body.startswith('?stonks'):
-        await handle_stonks_command(client, room, event)
-    # Check if it's a setting command
-    elif event.body.startswith('?setting'):
-        await handle_setting_command(client, room, event)
-    # Check if it's a sys command
-    elif event.body.strip() == '?sys':
-        await handle_sys_command(client, room, event)
-    else:
-        await message_callback(client, room, event)
-
-async def send_message(client, room_id: str, content: dict):
-    """Send a message to a Matrix room"""
-    try:
-        response = await client.room_send(
-            room_id=room_id,
-            message_type="m.room.message",
-            content=content
-        )
-        
-        if response:
-            logger.debug(f"Message sent to room {room_id}")
-            
-    except Exception as e:
-        logger.error(f"Error sending message: {e}")
-
 async def run_matrix_bot():
     """Run the Matrix bot"""
     # Initialize handlers first
@@ -219,10 +167,8 @@ async def run_matrix_bot():
         
         # Create wrapped callbacks that include the client
         async def wrapped_message_callback(room, event):
-            # Ignore own messages
-            if event.sender == client.user_id:
-                return
-            await process_message(client, room, event)
+            # Pass directly to message_callback which handles everything
+            await message_callback(client, room, event)
         
         async def wrapped_invite_callback(room, event):
             await invite_callback(client, room, event)
@@ -311,6 +257,21 @@ async def run_matrix_bot():
         raise
     finally:
         await client.close()
+
+async def send_message(client, room_id: str, content: dict):
+    """Send a message to a Matrix room"""
+    try:
+        response = await client.room_send(
+            room_id=room_id,
+            message_type="m.room.message",
+            content=content
+        )
+        
+        if response:
+            logger.debug(f"Message sent to room {room_id}")
+            
+    except Exception as e:
+        logger.error(f"Error sending message: {e}")
 
 async def handle_help_command(client, room, event):
     """Handle help command for Matrix"""
