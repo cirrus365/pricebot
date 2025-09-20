@@ -2,7 +2,11 @@
 from collections import defaultdict, deque
 from datetime import datetime
 from utils.helpers import get_display_name
-from config.settings import MAX_ROOM_HISTORY, MAX_IMPORTANT_MESSAGES
+from config.settings import (
+    MAX_ROOM_HISTORY, MAX_IMPORTANT_MESSAGES,
+    ENABLE_TOPIC_TRACKING, ENABLE_USER_INTERESTS,
+    ENABLE_IMPORTANCE_DETECTION, ENABLE_CONVERSATION_FLOW
+)
 
 # Store recent messages for context
 room_message_history = defaultdict(lambda: deque(maxlen=MAX_ROOM_HISTORY))
@@ -19,44 +23,61 @@ class ConversationContext:
         sender = message_data['sender']
         body = message_data['body'].lower()
         
-        # Extract topics from message
-        tech_topics = {
-            'python': ['python', 'pip', 'django', 'flask', 'pandas', 'numpy'],
-            'javascript': ['javascript', 'js', 'node', 'react', 'vue', 'angular'],
-            'linux': ['linux', 'ubuntu', 'debian', 'arch', 'kernel', 'bash'],
-            'security': ['security', 'encryption', 'vpn', 'tor', 'privacy', 'hack'],
-            'crypto': ['bitcoin', 'monero', 'ethereum', 'blockchain', 'defi'],
-            'ai': ['ai', 'machine learning', 'neural', 'gpt', 'llm', 'deepseek'],
-            'networking': ['network', 'tcp', 'udp', 'http', 'dns', 'firewall'],
-            'database': ['database', 'sql', 'mongodb', 'redis', 'postgresql'],
-        }
+        # Only track topics if enabled
+        if ENABLE_TOPIC_TRACKING:
+            # Extract topics from message
+            tech_topics = {
+                'python': ['python', 'pip', 'django', 'flask', 'pandas', 'numpy'],
+                'javascript': ['javascript', 'js', 'node', 'react', 'vue', 'angular'],
+                'linux': ['linux', 'ubuntu', 'debian', 'arch', 'kernel', 'bash'],
+                'security': ['security', 'encryption', 'vpn', 'tor', 'privacy', 'hack'],
+                'crypto': ['bitcoin', 'monero', 'ethereum', 'blockchain', 'defi'],
+                'ai': ['ai', 'machine learning', 'neural', 'gpt', 'llm', 'deepseek'],
+                'networking': ['network', 'tcp', 'udp', 'http', 'dns', 'firewall'],
+                'database': ['database', 'sql', 'mongodb', 'redis', 'postgresql'],
+            }
+            
+            # Update topic scores
+            for topic, keywords in tech_topics.items():
+                if any(keyword in body for keyword in keywords):
+                    self.topics[room_id][topic] += 1.0
+                    # Decay older topics
+                    for t in self.topics[room_id]:
+                        if t != topic:
+                            self.topics[room_id][t] *= 0.95
         
-        # Update topic scores
-        for topic, keywords in tech_topics.items():
-            if any(keyword in body for keyword in keywords):
-                self.topics[room_id][topic] += 1.0
-                # Decay older topics
-                for t in self.topics[room_id]:
-                    if t != topic:
-                        self.topics[room_id][t] *= 0.95
+        # Only track user interests if enabled
+        if ENABLE_USER_INTERESTS and ENABLE_TOPIC_TRACKING:
+            # Track user interests (requires topic tracking to be enabled)
+            tech_topics = {
+                'python': ['python', 'pip', 'django', 'flask', 'pandas', 'numpy'],
+                'javascript': ['javascript', 'js', 'node', 'react', 'vue', 'angular'],
+                'linux': ['linux', 'ubuntu', 'debian', 'arch', 'kernel', 'bash'],
+                'security': ['security', 'encryption', 'vpn', 'tor', 'privacy', 'hack'],
+                'crypto': ['bitcoin', 'monero', 'ethereum', 'blockchain', 'defi'],
+                'ai': ['ai', 'machine learning', 'neural', 'gpt', 'llm', 'deepseek'],
+                'networking': ['network', 'tcp', 'udp', 'http', 'dns', 'firewall'],
+                'database': ['database', 'sql', 'mongodb', 'redis', 'postgresql'],
+            }
+            
+            for topic, keywords in tech_topics.items():
+                if any(keyword in body for keyword in keywords):
+                    if topic not in self.user_interests[room_id][sender]:
+                        self.user_interests[room_id][sender].append(topic)
         
-        # Track user interests
-        for topic, keywords in tech_topics.items():
-            if any(keyword in body for keyword in keywords):
-                if topic not in self.user_interests[room_id][sender]:
-                    self.user_interests[room_id][sender].append(topic)
-        
-        # Mark important messages (questions, problems, announcements)
-        importance_indicators = ['?', 'help', 'error', 'problem', 'issue', 'important', 'announcement', 'urgent']
-        if any(indicator in body for indicator in importance_indicators):
-            self.important_messages[room_id].append({
-                'sender': sender,
-                'body': message_data['body'],
-                'timestamp': message_data['timestamp'],
-                'type': 'question' if '?' in body else 'issue' if any(word in body for word in ['error', 'problem']) else 'announcement'
-            })
-            # Keep only last N important messages
-            self.important_messages[room_id] = self.important_messages[room_id][-MAX_IMPORTANT_MESSAGES:]
+        # Only detect important messages if enabled
+        if ENABLE_IMPORTANCE_DETECTION:
+            # Mark important messages (questions, problems, announcements)
+            importance_indicators = ['?', 'help', 'error', 'problem', 'issue', 'important', 'announcement', 'urgent']
+            if any(indicator in body for indicator in importance_indicators):
+                self.important_messages[room_id].append({
+                    'sender': sender,
+                    'body': message_data['body'],
+                    'timestamp': message_data['timestamp'],
+                    'type': 'question' if '?' in body else 'issue' if any(word in body for word in ['error', 'problem']) else 'announcement'
+                })
+                # Keep only last N important messages
+                self.important_messages[room_id] = self.important_messages[room_id][-MAX_IMPORTANT_MESSAGES:]
     
     def get_room_context(self, room_id, lookback_messages=30):
         """Get comprehensive room context"""
@@ -67,32 +88,45 @@ class ConversationContext:
         if not messages:
             return None
         
-        # Get top topics
-        top_topics = sorted(self.topics[room_id].items(), key=lambda x: x[1], reverse=True)[:5]
-        
-        # Get active users and their expertise
-        user_expertise = {}
-        for user, interests in self.user_interests[room_id].items():
-            if interests:
-                user_expertise[get_display_name(user)] = interests[:3]  # Top 3 interests per user
-        
-        # Get recent important messages
-        recent_important = self.important_messages[room_id][-5:]
-        
-        # Analyze conversation flow
-        conversation_flow = self.analyze_conversation_flow(messages)
-        
-        return {
-            'top_topics': top_topics,
-            'user_expertise': user_expertise,
-            'recent_important': recent_important,
-            'conversation_flow': conversation_flow,
+        context = {
             'message_count': len(messages),
             'unique_participants': len(set(msg['sender'] for msg in messages))
         }
+        
+        # Only include topic analysis if enabled
+        if ENABLE_TOPIC_TRACKING:
+            # Get top topics
+            top_topics = sorted(self.topics[room_id].items(), key=lambda x: x[1], reverse=True)[:5]
+            context['top_topics'] = top_topics
+        
+        # Only include user expertise if enabled
+        if ENABLE_USER_INTERESTS:
+            # Get active users and their expertise
+            user_expertise = {}
+            for user, interests in self.user_interests[room_id].items():
+                if interests:
+                    user_expertise[get_display_name(user)] = interests[:3]  # Top 3 interests per user
+            context['user_expertise'] = user_expertise
+        
+        # Only include important messages if enabled
+        if ENABLE_IMPORTANCE_DETECTION:
+            # Get recent important messages
+            recent_important = self.important_messages[room_id][-5:]
+            context['recent_important'] = recent_important
+        
+        # Only analyze conversation flow if enabled
+        if ENABLE_CONVERSATION_FLOW:
+            # Analyze conversation flow
+            conversation_flow = self.analyze_conversation_flow(messages)
+            context['conversation_flow'] = conversation_flow
+        
+        return context
     
     def analyze_conversation_flow(self, messages):
         """Analyze how conversation is flowing"""
+        if not ENABLE_CONVERSATION_FLOW:
+            return 'normal'
+            
         if len(messages) < 3:
             return 'just_started'
         
@@ -154,22 +188,22 @@ def create_comprehensive_summary(room_id, minutes=30):
     summary += f"**Active Participants** ({len(participants)}): {', '.join(participants)}\n"
     summary += f"**Total Messages**: {len(recent_messages)}\n\n"
     
-    # Main topics if available
-    if context and context['top_topics']:
+    # Main topics if available and enabled
+    if ENABLE_TOPIC_TRACKING and context and context.get('top_topics'):
         summary += "**🔥 Hot Topics**:\n"
         for topic, score in context['top_topics'][:5]:
             summary += f"  • {topic.capitalize()} (relevance: {score:.1f})\n"
         summary += "\n"
     
-    # User expertise
-    if context and context['user_expertise']:
+    # User expertise if available and enabled
+    if ENABLE_USER_INTERESTS and context and context.get('user_expertise'):
         summary += "**👥 User Interests/Expertise**:\n"
         for user, interests in list(context['user_expertise'].items())[:5]:
             summary += f"  • {user}: {', '.join(interests)}\n"
         summary += "\n"
     
-    # Important messages
-    if context and context['recent_important']:
+    # Important messages if available and enabled
+    if ENABLE_IMPORTANCE_DETECTION and context and context.get('recent_important'):
         summary += "**⚡ Important Messages**:\n"
         for imp_msg in context['recent_important'][-5:]:
             msg_type = imp_msg['type']
@@ -178,8 +212,8 @@ def create_comprehensive_summary(room_id, minutes=30):
             summary += f"  • [{msg_type}] {sender}: {body_preview}\n"
         summary += "\n"
     
-    # Conversation flow
-    if context:
+    # Conversation flow if available and enabled
+    if ENABLE_CONVERSATION_FLOW and context and context.get('conversation_flow'):
         flow = context['conversation_flow']
         flow_description = {
             'very_active': '🔥 Very Active',

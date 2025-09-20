@@ -114,6 +114,20 @@ MAX_CONTEXT_LOOKBACK = int(os.getenv("MAX_CONTEXT_LOOKBACK", "5"))  # Reduced fr
 MAX_IMPORTANT_MESSAGES = int(os.getenv("MAX_IMPORTANT_MESSAGES", "3"))  # Reduced from 20
 ENABLE_CONTEXT_ANALYSIS = os.getenv("ENABLE_CONTEXT_ANALYSIS", "false").lower() == "true"  # Disabled by default
 
+# Detailed context feature toggles
+ENABLE_TOPIC_TRACKING = os.getenv("ENABLE_TOPIC_TRACKING", "false").lower() == "true"
+ENABLE_USER_INTERESTS = os.getenv("ENABLE_USER_INTERESTS", "false").lower() == "true"
+ENABLE_IMPORTANCE_DETECTION = os.getenv("ENABLE_IMPORTANCE_DETECTION", "false").lower() == "true"
+ENABLE_CONVERSATION_FLOW = os.getenv("ENABLE_CONVERSATION_FLOW", "false").lower() == "true"
+
+# Context inclusion settings
+INCLUDE_CONTEXT_IN_PROMPT = os.getenv("INCLUDE_CONTEXT_IN_PROMPT", "true").lower() == "true"
+MAX_CONTEXT_CHARS = int(os.getenv("MAX_CONTEXT_CHARS", "500"))
+
+# Context cleanup settings
+CONTEXT_CLEANUP_INTERVAL = int(os.getenv("CONTEXT_CLEANUP_INTERVAL", "3600"))  # 1 hour
+CONTEXT_CLEANUP_AGE = int(os.getenv("CONTEXT_CLEANUP_AGE", "86400"))  # 24 hours
+
 # Retry settings
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", "2"))  # Reduced from 3
 BASE_RETRY_DELAY = int(os.getenv("BASE_RETRY_DELAY", "1"))

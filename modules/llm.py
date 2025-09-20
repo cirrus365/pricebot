@@ -10,7 +10,7 @@ from config.settings import (
     OLLAMA_TEMPERATURE, OLLAMA_TOP_K, OLLAMA_TOP_P, OLLAMA_REPEAT_PENALTY,
     LLM_TIMEOUT, MAX_RETRIES, BASE_RETRY_DELAY, MAX_CONTEXT_LOOKBACK,
     FILTERED_WORDS, ENABLE_PRICE_TRACKING, ENABLE_CONTEXT_ANALYSIS,
-    ENABLE_WEB_SEARCH
+    ENABLE_WEB_SEARCH, INCLUDE_CONTEXT_IN_PROMPT, MAX_CONTEXT_CHARS
 )
 from config.personality import BOT_PERSONALITY
 from utils.helpers import filter_bot_triggers, get_display_name
@@ -128,13 +128,23 @@ async def get_llm_reply(prompt, context=None, previous_message=None, room_id=Non
     # Build simple system prompt
     system_prompt = BOT_PERSONALITY
     
-    # Add minimal context if enabled
-    if ENABLE_CONTEXT_ANALYSIS and room_id and room_id in room_message_history:
-        recent_messages = list(room_message_history[room_id])[-3:]  # Only last 3 messages
+    # Add minimal context if enabled and configured
+    if ENABLE_CONTEXT_ANALYSIS and INCLUDE_CONTEXT_IN_PROMPT and room_id and room_id in room_message_history:
+        recent_messages = list(room_message_history[room_id])[-MAX_CONTEXT_LOOKBACK:]
         if recent_messages:
             context_str = "\nRecent conversation:\n"
-            for msg in recent_messages:
-                context_str += f"- {get_display_name(msg['sender'])}: {msg['body'][:100]}\n"
+            total_chars = 0
+            for msg in reversed(recent_messages):  # Start with most recent
+                msg_text = f"- {get_display_name(msg['sender'])}: {msg['body']}\n"
+                if total_chars + len(msg_text) > MAX_CONTEXT_CHARS:
+                    # Truncate if we exceed max chars
+                    remaining_chars = MAX_CONTEXT_CHARS - total_chars
+                    if remaining_chars > 50:  # Only add if meaningful amount left
+                        msg_text = msg_text[:remaining_chars] + "...\n"
+                        context_str += msg_text
+                    break
+                context_str += msg_text
+                total_chars += len(msg_text)
             system_prompt += context_str
     
     # Add URL content if provided
