@@ -11,8 +11,7 @@ BOT_USERNAME = os.getenv("BOT_USERNAME", "pricebot").lower()
 # Integration toggles
 INTEGRATIONS = {
     'matrix': os.getenv("ENABLE_MATRIX", "true").lower() == "true",
-    'discord': os.getenv("ENABLE_DISCORD", "false").lower() == "true",
-    'telegram': os.getenv("ENABLE_TELEGRAM", "false").lower() == "true"
+    'discord': os.getenv("ENABLE_DISCORD", "false").lower() == "true"
 }
 
 # Matrix credentials - no defaults for sensitive data
@@ -29,11 +28,6 @@ MATRIX_REQUEST_TIMEOUT = int(os.getenv("MATRIX_REQUEST_TIMEOUT", "20"))  # 20 se
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 DISCORD_COMMAND_PREFIX = os.getenv("DISCORD_COMMAND_PREFIX", "?")
 DISCORD_ALLOWED_GUILDS = os.getenv("DISCORD_ALLOWED_GUILDS", "").split(",") if os.getenv("DISCORD_ALLOWED_GUILDS") else []
-
-# Telegram credentials
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_ALLOWED_USERS = os.getenv("TELEGRAM_ALLOWED_USERS", "").split(",") if os.getenv("TELEGRAM_ALLOWED_USERS") else []
-TELEGRAM_ALLOWED_GROUPS = os.getenv("TELEGRAM_ALLOWED_GROUPS", "").split(",") if os.getenv("TELEGRAM_ALLOWED_GROUPS") else []
 
 # Price tracking settings
 PRICE_CACHE_TTL = int(os.getenv("PRICE_CACHE_TTL", "300"))  # 5 minutes cache for price data

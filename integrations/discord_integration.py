@@ -1,5 +1,5 @@
 """
-Discord integration for Price Tracker Bot
+Discord integration for Price Tracker & World Clock Bot
 """
 import discord
 from discord.ext import commands
@@ -10,7 +10,7 @@ from config.settings import DISCORD_TOKEN, BOT_USERNAME, ENABLE_PRICE_TRACKING, 
 logger = logging.getLogger(__name__)
 
 class PriceTrackerDiscordBot(commands.Bot):
-    """Discord bot implementation for Price Tracker"""
+    """Discord bot implementation for Price Tracker & World Clock"""
     
     def __init__(self):
         intents = discord.Intents.default()
@@ -21,7 +21,7 @@ class PriceTrackerDiscordBot(commands.Bot):
         super().__init__(
             command_prefix='?',
             intents=intents,
-            description=f"{BOT_USERNAME.capitalize()} - Price tracking bot",
+            description=f"{BOT_USERNAME.capitalize()} - Price tracking and world clock bot",
             help_command=None  # Disable default help command to use our custom one
         )
         
@@ -44,22 +44,24 @@ class PriceTrackerDiscordBot(commands.Bot):
         )
 
 class PriceCommands(commands.Cog):
-    """Command handlers for Price Tracker Discord bot"""
+    """Command handlers for Price Tracker & World Clock Discord bot"""
     
     def __init__(self, bot):
         self.bot = bot
         # Import here to avoid circular imports
         from modules.price_tracker import price_tracker
         from modules.stock_tracker import stock_tracker
+        from modules.world_clock import world_clock
         self.price_tracker = price_tracker
         self.stock_tracker = stock_tracker
+        self.world_clock = world_clock
         
     @commands.command(name='help', help='Show this help message')
     async def help_command(self, ctx):
         """Custom help command"""
         embed = discord.Embed(
-            title=f"💰 Price Tracker Bot Commands",
-            description="Track cryptocurrency and stock prices!",
+            title=f"💰 Price Tracker & World Clock Bot Commands",
+            description="Track cryptocurrency, stock prices, and world time!",
             color=discord.Color.gold()
         )
         
@@ -76,13 +78,35 @@ class PriceCommands(commands.Cog):
         )
         
         embed.add_field(
+            name="🕐 World Clock",
+            value="`?clock <city/country>` - Get time for a location\n`?clock` - Show current UTC time",
+            inline=False
+        )
+        
+        embed.add_field(
             name="📊 Info",
             value="`?help` - Show this message\n`?ping` - Check bot latency",
             inline=False
         )
         
-        embed.set_footer(text=f"Price Tracker Bot")
+        embed.set_footer(text=f"Price Tracker & World Clock Bot")
         await ctx.send(embed=embed)
+        
+    @commands.command(name='clock', help='Get time for a city or country')
+    async def clock_command(self, ctx, *, location: str = None):
+        """Get world clock time"""
+        async with ctx.typing():
+            query = location if location else ""
+            response = await self.world_clock.handle_clock_command(query)
+            
+            # Create embed
+            embed = discord.Embed(
+                title="🕐 World Clock",
+                description=response,
+                color=discord.Color.blue()
+            )
+            
+            await ctx.send(embed=embed)
         
     @commands.command(name='stonks', help='Get stock market information')
     async def stonks_command(self, ctx, *, ticker: str = None):
@@ -153,13 +177,14 @@ async def run_discord_bot():
     bot = PriceTrackerDiscordBot()
     
     print("=" * 50)
-    print(f"💰 Price Tracker Bot - Discord Integration Active!")
+    print(f"💰 Price Tracker & World Clock Bot - Discord Integration Active!")
     print("=" * 50)
     print("✅ Discord bot starting...")
     print(f"✅ Bot Name: {BOT_USERNAME.capitalize()}")
     print("📝 Commands: Use ? prefix (e.g., ?help)")
     print("💰 Price tracking: ?price <crypto> [currency] or ?price <from> <to>")
     print("📊 Stock market: ?stonks <ticker> for stock data")
+    print("🕐 World clock: ?clock <location> for time info")
     print("=" * 50)
     
     try:
