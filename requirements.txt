@@ -1,6 +1,5 @@
 matrix-nio>=0.24.0
 aiohttp>=3.9.0
-asyncio
 python-dotenv
 discord.py>=2.3.0
 yfinance>=0.2.28

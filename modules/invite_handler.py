@@ -1,23 +1,20 @@
 """Room invite handling"""
 from nio import MatrixRoom, InviteMemberEvent
-from config.settings import ALLOWED_INVITE_USERS
+from config.settings import ALLOWED_INVITE_USERS, ENABLE_AUTO_INVITE
 
 # Store joined rooms
 joined_rooms = set()
 
 async def invite_callback(client, room: MatrixRoom, event: InviteMemberEvent):
     """Handle room invites"""
-    # Import here to avoid circular dependency
-    from modules.settings_manager import settings_manager
-    
     print(f"[INVITE] Received invite to room {room.room_id} from {event.sender}")
     
     # Only process invites for our user
     if event.state_key != client.user_id:
         return
     
-    # Check if auto-invite is disabled using settings manager
-    if not settings_manager.is_auto_invite_enabled():
+    # Check if auto-invite is disabled
+    if not ENABLE_AUTO_INVITE:
         print(f"[INVITE] Auto-invite is disabled. Ignoring invite from {event.sender}")
         return
     
@@ -45,7 +42,7 @@ async def invite_callback(client, room: MatrixRoom, event: InviteMemberEvent):
             message_type="m.room.message",
             content={
                 "msgtype": "m.text",
-                "body": "Hey! I'm Nifty! 👋 Thanks for inviting me! Just say 'nifty' followed by your message to chat, or reply to any of my messages! 🚀\n\nI specialize in:\n• 💻 Programming & debugging\n• 🐧 Linux/Unix systems\n• 🌐 Web dev & networking\n• 🔒 Security & cryptography\n• 🤖 General tech support\n• 📱 Mobile dev tips\n• 🎮 Gaming & internet culture\n\nCommands:\n• `nifty !reset` - Clear my context\n• `nifty summary` - Get a detailed chat analysis\n• Share URLs and I'll read and analyze them!\n\nI also react to messages with emojis when appropriate! 😊 Let's build something cool! 💪"
+                "body": "👋 Price Tracker & World Clock Bot\n\n📚 Available Commands:\n• `?price <crypto>` - Get cryptocurrency price\n• `?price <from> <to>` - Get exchange rate\n• `?xmr` - Quick Monero price check\n• `?stonks <ticker>` - Get stock information\n• `?clock <location>` - Get time for a location\n• `?help` - Show all commands\n\nExamples: `?price btc`, `?clock paris`, `?stonks AAPL`"
             }
         )
     else:

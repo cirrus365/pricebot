@@ -20,9 +20,12 @@ USERNAME = os.getenv("MATRIX_USERNAME")
 PASSWORD = os.getenv("MATRIX_PASSWORD")
 
 # Matrix Settings
-MATRIX_STORE_PATH = os.getenv("MATRIX_STORE_PATH", "./matrix_store")
 MATRIX_SYNC_TIMEOUT = int(os.getenv("MATRIX_SYNC_TIMEOUT", "10000"))  # 10 seconds default
 MATRIX_REQUEST_TIMEOUT = int(os.getenv("MATRIX_REQUEST_TIMEOUT", "20"))  # 20 seconds default
+
+# Matrix Auto-Invite Settings
+ENABLE_AUTO_INVITE = os.getenv("ENABLE_AUTO_INVITE", "true").lower() == "true"
+ALLOWED_INVITE_USERS = os.getenv("ALLOWED_INVITE_USERS", "").split(",") if os.getenv("ALLOWED_INVITE_USERS") else []
 
 # Discord credentials - no defaults for sensitive data
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
