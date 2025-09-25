@@ -1,5 +1,5 @@
 """
-Matrix integration for Price Tracker Bot
+Matrix integration for Price Tracker & World Clock Bot
 """
 import asyncio
 import logging
@@ -24,19 +24,22 @@ logger = logging.getLogger(__name__)
 processed_events = set()
 bot_start_time = time.time()
 
-# Import price and stock trackers
+# Import price, stock trackers, and world clock
 price_tracker = None
 stock_tracker = None
+world_clock = None
 
 def initialize_handlers():
     """Initialize handlers after module is loaded to avoid circular imports"""
-    global price_tracker, stock_tracker
+    global price_tracker, stock_tracker, world_clock
     
     from modules.price_tracker import price_tracker as pt
     from modules.stock_tracker import stock_tracker as stk
+    from modules.world_clock import world_clock as wc
     
     price_tracker = pt
     stock_tracker = stk
+    world_clock = wc
 
 def mark_event_processed(event_id):
     """Mark an event as processed"""
@@ -60,7 +63,7 @@ async def send_message(client, room_id: str, content: dict):
 async def handle_help_command(client, room, event):
     """Handle help command for Matrix"""
     try:
-        help_text = f"""📚 **Price Tracker Bot - Available Commands**
+        help_text = f"""📚 **Price Tracker & World Clock Bot - Available Commands**
 
 **Price Commands:**
 • `?price <crypto>` - Get cryptocurrency price (default: USD)
@@ -72,6 +75,10 @@ async def handle_help_command(client, room, event):
 • `?stonks <ticker>` - Get stock information
 • `?stonks` - Get market summary
 
+**World Clock:**
+• `?clock <city/country>` - Get current time for a location
+• `?clock` - Show current UTC time
+
 **Other Commands:**
 • `?help` - Show this help message
 
@@ -79,7 +86,9 @@ Examples:
 • `?price btc` - Bitcoin price in USD
 • `?price eth eur` - Ethereum price in EUR
 • `?price usd aud` - USD to AUD exchange rate
-• `?stonks AAPL` - Apple stock info"""
+• `?stonks AAPL` - Apple stock info
+• `?clock paris` - Current time in Paris
+• `?clock tokyo, new york` - Multiple locations"""
 
         await send_message(
             client,
@@ -201,6 +210,29 @@ async def handle_stonks_command(client, room, event):
     except Exception as e:
         logger.error(f"Error handling stonks command: {e}")
 
+async def handle_clock_command(client, room, event):
+    """Handle world clock command for Matrix"""
+    try:
+        parts = event.body.strip().split(maxsplit=1)
+        query = parts[1] if len(parts) > 1 else ""
+        
+        response = await world_clock.handle_clock_command(query)
+        
+        await send_message(
+            client,
+            room.room_id,
+            {
+                "msgtype": "m.text",
+                "body": response.replace("**", ""),
+                "format": "org.matrix.custom.html",
+                "formatted_body": response.replace("**", "<strong>").replace("**", "</strong>")
+                                         .replace("\n", "<br/>")
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Error handling clock command: {e}")
+
 async def message_callback(client, room: MatrixRoom, event: RoomMessageText):
     """Handle incoming messages"""
     
@@ -235,6 +267,8 @@ async def message_callback(client, room: MatrixRoom, event: RoomMessageText):
             await handle_xmr_command(client, room, event)
         elif command == '?stonks':
             await handle_stonks_command(client, room, event)
+        elif command == '?clock':
+            await handle_clock_command(client, room, event)
 
 async def run_matrix_bot():
     """Run the Matrix bot"""
@@ -299,7 +333,7 @@ async def run_matrix_bot():
                             mark_event_processed(event.event_id)
         
         print("=" * 50)
-        print(f"💰 Price Tracker Bot - Matrix Integration Active!")
+        print(f"💰 Price Tracker & World Clock Bot - Matrix Integration Active!")
         print("=" * 50)
         print(f"✅ Identity: {USERNAME}")
         print(f"✅ Bot Name: {BOT_USERNAME.capitalize()}")
@@ -310,6 +344,7 @@ async def run_matrix_bot():
         print("  ?price <crypto> [currency] - Get crypto/fiat prices")
         print("  ?xmr - Quick Monero price check")
         print("  ?stonks <ticker> - Get stock market data")
+        print("  ?clock <location> - Get time for a location")
         print("=" * 50)
         
         # Sync forever

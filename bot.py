@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Price Tracker Bot - Multi-platform price and currency tracking bot
+Price Tracker Bot - Multi-platform price and currency tracking bot with world clock
 Main entry point for the application
 """
 import asyncio
@@ -22,12 +22,14 @@ async def main():
     # Check which integrations are enabled
     matrix_enabled = INTEGRATIONS.get('matrix', True)
     discord_enabled = INTEGRATIONS.get('discord', False)
+    telegram_enabled = INTEGRATIONS.get('telegram', False)
     
     print("\n" + "=" * 50)
-    print("💰 Price Tracker Bot Starting...")
+    print("💰 Price Tracker & World Clock Bot Starting...")
     print("=" * 50)
     print(f"📡 Matrix Integration: {'✅ ENABLED' if matrix_enabled else '❌ DISABLED'}")
     print(f"💬 Discord Integration: {'✅ ENABLED' if discord_enabled else '❌ DISABLED'}")
+    print(f"💬 Telegram Integration: {'✅ ENABLED' if telegram_enabled else '❌ DISABLED'}")
     print("=" * 50 + "\n")
     
     # Start Matrix bot if enabled
@@ -42,11 +44,17 @@ async def main():
         from integrations.discord_integration import run_discord_bot
         tasks.append(asyncio.create_task(run_discord_bot()))
     
+    # Start Telegram bot if enabled
+    if telegram_enabled:
+        logger.info("Starting Telegram integration...")
+        from integrations.telegram_integration import run_telegram_bot
+        tasks.append(asyncio.create_task(run_telegram_bot()))
+    
     if not tasks:
         logger.error("No integrations enabled! Enable at least one integration in .env file.")
         print("\n❌ ERROR: No integrations enabled!")
         print("Please set at least one of the following to true in your .env file:")
-        print("  ENABLE_MATRIX, ENABLE_DISCORD")
+        print("  ENABLE_MATRIX, ENABLE_DISCORD, ENABLE_TELEGRAM")
         return
     
     # Wait for all tasks
@@ -54,7 +62,7 @@ async def main():
         await asyncio.gather(*tasks)
     except KeyboardInterrupt:
         logger.info("Received keyboard interrupt - shutting down...")
-        print("\n\nShutting down Price Tracker Bot...")
+        print("\n\nShutting down Price Tracker & World Clock Bot...")
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
