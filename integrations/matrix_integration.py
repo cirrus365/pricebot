@@ -10,12 +10,14 @@ from nio import (
     AsyncClientConfig,
     LoginResponse, 
     RoomMessageText, 
-    MatrixRoom
+    MatrixRoom,
+    InviteMemberEvent
 )
 from config.settings import (
     HOMESERVER, USERNAME, PASSWORD, BOT_USERNAME,
     ENABLE_PRICE_TRACKING, ENABLE_STOCK_MARKET,
-    MATRIX_SYNC_TIMEOUT, MATRIX_REQUEST_TIMEOUT
+    MATRIX_SYNC_TIMEOUT, MATRIX_REQUEST_TIMEOUT,
+    ENABLE_AUTO_INVITE
 )
 
 logger = logging.getLogger(__name__)
@@ -312,6 +314,12 @@ async def run_matrix_bot():
         # Add event callbacks
         client.add_event_callback(lambda room, event: asyncio.create_task(message_callback(client, room, event)), RoomMessageText)
         
+        # Check if auto-invite is enabled and add invite callback
+        if ENABLE_AUTO_INVITE:
+            from modules.invite_handler import invite_callback
+            client.add_event_callback(lambda room, event: asyncio.create_task(invite_callback(client, room, event)), InviteMemberEvent)
+            logger.info("Auto-invite handling enabled")
+        
         # Do initial sync
         logger.info("Matrix: Performing initial sync...")
         sync_filter = {
@@ -338,6 +346,7 @@ async def run_matrix_bot():
         print(f"✅ Identity: {USERNAME}")
         print(f"✅ Bot Name: {BOT_USERNAME.capitalize()}")
         print(f"🔑 Device ID: {response.device_id}")
+        print(f"✅ Auto-invite: {'ENABLED' if ENABLE_AUTO_INVITE else 'DISABLED'}")
         print("✅ Listening for commands in all joined rooms")
         print("📚 Commands:")
         print("  ?help - Show available commands")
