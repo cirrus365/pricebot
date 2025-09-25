@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Nifty Bot - Multi-platform chatbot with Matrix, Discord, Telegram, WhatsApp, Messenger, and Instagram support
+Price Tracker Bot - Multi-platform price and currency tracking bot
 Main entry point for the application
 """
 import asyncio
@@ -28,7 +28,7 @@ async def main():
     instagram_enabled = INTEGRATIONS.get('instagram', False)
     
     print("\n" + "=" * 50)
-    print("🚀 Nifty Bot Starting...")
+    print("💰 Price Tracker Bot Starting...")
     print("=" * 50)
     print(f"📡 Matrix Integration: {'✅ ENABLED' if matrix_enabled else '❌ DISABLED'}")
     print(f"💬 Discord Integration: {'✅ ENABLED' if discord_enabled else '❌ DISABLED'}")
@@ -75,7 +75,7 @@ async def main():
         await asyncio.gather(*tasks)
     except KeyboardInterrupt:
         logger.info("Received keyboard interrupt - shutting down...")
-        print("\n\nShutting down Nifty Bot...")
+        print("\n\nShutting down Price Tracker Bot...")
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
